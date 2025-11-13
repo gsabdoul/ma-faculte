@@ -1,1 +1,1 @@
-{"name":"Ma Faculté","short_name":"MaFaculté","description":"L'application indispensable pour les étudiants du Burkina Faso.","start_url":"/","display":"standalone","background_color":"#ffffff","theme_color":"#ffffff","lang":"en","scope":"/","icons":[{"src":"pwa-192x192.png","sizes":"192x192","type":"image/png"},{"src":"pwa-512x512.png","sizes":"512x512","type":"image/png"}]}
+{"name":"ma-faculte","short_name":"ma-faculte","start_url":"/ma-faculte/","display":"standalone","background_color":"#ffffff","theme_color":"#42b883","lang":"en","scope":"/ma-faculte/"}
