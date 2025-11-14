@@ -113,4 +113,7 @@ export const router = createHashRouter([
             }
         ]
     },
+
+    // Fallback: redirige toute route non reconnue vers la page de bienvenue
+    { path: "*", element: <Navigate to="/welcome" replace /> },
 ]);
