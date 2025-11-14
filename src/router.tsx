@@ -36,70 +36,51 @@ import { RegisterPage } from './pages/auth/RegisterPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 
 export const router = createHashRouter([
-    // Route d'accueil (welcome)
     {
-        path: "/welcome",
-        element: <WelcomePage />,
-    },
-    // Routes d'authentification
-    {
-        path: "/login",
-        element: <LoginPage />,
-    },
-    {
-        path: "/register",
-        element: <RegisterPage />,
-    },
-    {
-        path: "/forgot-password",
-        element: <ForgotPasswordPage />,
-    },
-    {
+        // Routes publiques et layout principal
         path: "/",
         element: <MainLayout />,
-        // Les "children" sont les pages qui s'afficheront à l'intérieur de MainLayout (avec la barre de navigation)
         children: [
-            { index: true, element: <Navigate to="/welcome" replace /> }, // Redirection vers la page Welcome à l'ouverture
+            // Redirection de la racine vers la page de bienvenue
+            { index: true, element: <Navigate to="/welcome" replace /> },
+            { path: "welcome", element: <WelcomePage /> },
+            { path: "login", element: <LoginPage /> },
+            { path: "register", element: <RegisterPage /> },
+            { path: "forgot-password", element: <ForgotPasswordPage /> },
+
+            // Routes protégées nécessitant une authentification
             {
                 element: <RequireAuth />,
                 children: [
                     { path: "home", element: <HomePage /> },
                     { path: "drives", element: <DrivesPage /> },
                     { path: "livres", element: <BooksPage /> },
-                    { path: "profil", element: <ProfilePage /> },
+                    { path: "profil", element: <ProfilePage /> }, // Note: les sous-routes de profil sont en dehors du MainLayout
                     { path: "modules/:moduleId/universites", element: <UniversitePage /> },
+                    { path: "modules/:moduleId/universites/:universityId/sujets", element: <SujetPage /> },
+                    { path: "sujets/:sujetId", element: <SujetViewPage /> },
+                    { path: "notifications", element: <NotificationsPage /> },
                 ]
             },
         ],
     },
+
+    // Routes spécifiques (hors MainLayout) mais protégées
     {
-        path: "/modules/:moduleId/universites/:universityId/sujets",
-        element: <SujetPage />,
+        element: <RequireAuth />,
+        children: [
+            { path: "/profil/modifier", element: <EditProfilePage /> },
+            { path: "/profil/abonnement", element: <SubscriptionPage /> },
+            { path: "/profil/equipe", element: <TeamPage /> },
+        ]
     },
-    {
-        path: "/sujets/:sujetId",
-        element: <SujetViewPage />,
-    },
-    {
-        path: "/profil/modifier",
-        element: <EditProfilePage />,
-    },
-    {
-        path: "/profil/abonnement",
-        element: <SubscriptionPage />,
-    },
-    {
-        path: "/profil/equipe",
-        element: <TeamPage />,
-    },
-    {
-        path: "/notifications",
-        element: <NotificationsPage />,
-    },
+
+    // Routes pour les rédacteurs (Writer)
     {
         path: "/writer",
-        element: <RequireAuth />, // Protéger les routes du rédacteur
+        element: <RequireAuth />, // Vous pourriez avoir un RequireAuth spécifique au rôle ici
         children: [
+            { index: true, element: <Navigate to="dashboard" replace /> },
             { path: "dashboard", element: <WriterDashboard /> },
             { path: "add-subject", element: <AddSubjectPage /> },
             { path: "add-book", element: <AddBookPage /> },
@@ -109,20 +90,27 @@ export const router = createHashRouter([
             { path: "edit-drive/:driveId", element: <EditDrivePage /> },
         ]
     },
+
+    // Routes pour l'administration
     {
         path: "/admin",
-        element: <AdminLayout />,
+        element: <RequireAuth />, // Protéger aussi le layout admin
         children: [
-            { index: true, element: <AdminDashboard /> },
-            { path: "users", element: <ManageUsersPage /> },
-            { path: "subjects", element: <ManageSubjectsPage /> },
-            { path: "books", element: <ManageBooksPage /> },
-            { path: "drives", element: <ManageDrivesPage /> },
-            { path: "modules", element: <ManageModulesPage /> },
-            { path: "reports", element: <ManageReportsPage /> },
-            { path: "faculties", element: <ManageFacultiesPage /> },
-            { path: "revenues", element: <ManageRevenuesPage /> },
-            { path: "universities", element: <ManageUniversitiesPage /> },
+            {
+                element: <AdminLayout />, children: [
+                    { index: true, element: <Navigate to="dashboard" replace /> },
+                    { path: "dashboard", element: <AdminDashboard /> },
+                    { path: "users", element: <ManageUsersPage /> },
+                    { path: "subjects", element: <ManageSubjectsPage /> },
+                    { path: "books", element: <ManageBooksPage /> },
+                    { path: "drives", element: <ManageDrivesPage /> },
+                    { path: "modules", element: <ManageModulesPage /> },
+                    { path: "reports", element: <ManageReportsPage /> },
+                    { path: "faculties", element: <ManageFacultiesPage /> },
+                    { path: "revenues", element: <ManageRevenuesPage /> },
+                    { path: "universities", element: <ManageUniversitiesPage /> },
+                ]
+            }
         ]
-    }
+    },
 ]);
