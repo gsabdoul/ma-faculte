@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from "react-router-dom";
+import { createHashRouter, Navigate } from "react-router-dom";
 import { MainLayout } from "./components/layout/MainLayout"; // <- Chemin correct
 import { HomePage } from "./pages/HomePage"; // <- Chemin correct
 import { DrivesPage } from "./pages/DrivesPage"; // <- Chemin correct
@@ -35,7 +35,7 @@ import { EditDrivePage } from './pages/writer/EditDrivePage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 
-export const router = createBrowserRouter([
+export const router = createHashRouter([
     // Route d'accueil (welcome)
     {
         path: "/welcome",

@@ -5,6 +5,6 @@ import { VitePWA } from 'vite-plugin-pwa'
 // https://vitejs.dev/config/
 export default defineConfig({
   // IMPORTANT: Changez ceci pour correspondre au nom de votre dépôt GitHub
-  base: "/ma-faculte",
+  base: "/ma-faculte/",
   plugins: [react(), VitePWA({ registerType: 'autoUpdate' })],
 })
