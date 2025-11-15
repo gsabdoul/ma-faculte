@@ -24,6 +24,7 @@ const DriveSkeleton = () => (
 );
 
 export function DrivesPage() {
+    const BASE_URL = import.meta.env.BASE_URL;
     const [searchTerm, setSearchTerm] = useState('');
     const [drives, setDrives] = useState<Drive[]>([]);
     const [loading, setLoading] = useState(true);
@@ -140,7 +141,7 @@ export function DrivesPage() {
                             className="flex items-start p-4 bg-white rounded-lg shadow-md transition-shadow group"
                         >
                             <a href={drive.url} target="_blank" rel="noopener noreferrer" className="flex items-start flex-grow">
-                                <img src="/google-drive.png" alt="Drive" className="w-12 h-12 flex-shrink-0" />
+                                <img src={`${BASE_URL}google-drive.png`} alt="Drive" className="w-12 h-12 flex-shrink-0" />
                                 <div className="ml-4">
                                     <h2 className="font-semibold text-gray-800 group-hover:text-blue-600">{drive.titre}</h2>
                                     <p className="text-sm text-gray-600 mt-1">{drive.description}</p>
