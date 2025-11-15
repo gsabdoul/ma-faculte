@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Modal } from './components/Modal';
+import InstallPrompt from './components/InstallPrompt';
 import { registerSW } from 'virtual:pwa-register';
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
   return (
     <>
       <Outlet /> {/* Le contenu de vos routes s'affichera ici */}
+      <InstallPrompt />
       <Modal isOpen={needsRefresh} onClose={closePrompt} title="Mise à jour disponible">
         <p className="text-sm text-gray-700">
           Une nouvelle version de l’application est prête. Voulez-vous l’appliquer maintenant ?
