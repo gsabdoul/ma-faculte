@@ -142,6 +142,7 @@ CREATE TABLE public.sujets (
   created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
   created_by uuid,
+  correction text,
   CONSTRAINT sujets_pkey PRIMARY KEY (id),
   CONSTRAINT sujets_module_id_fkey FOREIGN KEY (module_id) REFERENCES public.modules(id),
   CONSTRAINT sujets_universite_id_fkey FOREIGN KEY (universite_id) REFERENCES public.universites(id),

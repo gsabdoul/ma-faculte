@@ -55,7 +55,7 @@ export function ProfilePage() {
     const shareData = {
       title: 'Ma Faculté',
       text: 'Découvre Ma Faculté, l\'application indispensable pour les étudiants du Burkina Faso !',
-      url: window.location.origin, // URL de la page d'accueil de l'application
+      url: 'https://gsabdoul.github.io/ma-faculte/', // URL de la page d'accueil de l'application
     };
 
     // Utilise l'API Web Share si elle est disponible
@@ -110,12 +110,12 @@ export function ProfilePage() {
     {
       icon: DocumentTextIcon,
       text: "Politique de confidentialité",
-      onClick: () => window.open('https://docs.google.com/document/d/1CGbmt8EEZ3USSWFNftSb6yroNZbL50bHOS3sC9O-bro/edit?usp=sharing', '_blank')
+      onClick: () => window.open('../docs/politique_de_confidentialite.txt', '_blank')
     },
     {
       icon: DocumentTextIcon,
       text: "Termes et conditions d'utilisation",
-      onClick: () => window.open('https://drive.google.com/file/d/VOTRE_ID_DE_FICHIER_TERMES/preview', '_blank')
+      onClick: () => window.open('../docs/termes_et_conditions d'utilisation.txt', '_blank')
     },
     { icon: ShareIcon, text: "Partager l'application", onClick: handleShare },
     // Élément visible uniquement pour le rôle 'admin'
