@@ -110,12 +110,12 @@ export function ProfilePage() {
     {
       icon: DocumentTextIcon,
       text: "Politique de confidentialité",
-      onClick: () => window.open('../docs/politique_de_confidentialite.txt', '_blank')
+      onClick: () => window.open('https://drive.google.com/file/d/1b-WtUZuNAedPdWiRdpmtjeiJQ3zIN7zC/view?usp=sharing', '_blank')
     },
     {
       icon: DocumentTextIcon,
       text: "Termes et conditions d'utilisation",
-      onClick: () => window.open('../docs/termes_et_conditions d'utilisation.txt', '_blank')
+      onClick: () => window.open('https://drive.google.com/file/d/147PFQ1cSDWwEbBFSCRjeowEFTLgJ4J8n/view?usp=sharing', '_blank')
     },
     { icon: ShareIcon, text: "Partager l'application", onClick: handleShare },
     // Élément visible uniquement pour le rôle 'admin'
