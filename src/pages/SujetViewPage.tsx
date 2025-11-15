@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeftIcon, EllipsisVerticalIcon, FlagIcon, BookmarkIcon } from '@heroicons/react/24/solid';
+import { ChevronLeftIcon, EllipsisVerticalIcon, FlagIcon, BookmarkIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/solid';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Modal } from '../components/Modal';
 import { supabase } from '../supabase';
@@ -23,6 +23,20 @@ export function SujetViewPage() {
     const [error, setError] = useState<string | null>(null);
     const [pdfSource, setPdfSource] = useState<string | null>(null);
     const [triedBlobFetch, setTriedBlobFetch] = useState(false);
+    const [zoom, setZoom] = useState(1);
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const [containerWidth, setContainerWidth] = useState<number>(0);
+
+    useEffect(() => {
+        const updateWidth = () => {
+            const el = containerRef.current;
+            if (!el) return;
+            setContainerWidth(el.clientWidth);
+        };
+        updateWidth();
+        window.addEventListener('resize', updateWidth);
+        return () => window.removeEventListener('resize', updateWidth);
+    }, []);
 
     useEffect(() => {
         if (!sujetId) {
@@ -135,7 +149,36 @@ export function SujetViewPage() {
                         </button>
                         <h1 className="text-lg font-bold text-gray-800 truncate">{subject.titre || subject.title}</h1>
                     </div>
-                    <div className="relative">
+                    <div className="flex items-center gap-2 relative">
+                        {/* Zoom controls */}
+                        <button
+                            onClick={() => setZoom(z => Math.max(0.5, Number((z - 0.1).toFixed(2))))}
+                            className="p-2 rounded-full hover:bg-gray-100"
+                            title="Zoom -"
+                        >
+                            <MagnifyingGlassMinusIcon className="w-6 h-6 text-gray-700" />
+                        </button>
+                        <span className="text-sm text-gray-600 w-12 text-center">{Math.round(zoom * 100)}%</span>
+                        <button
+                            onClick={() => setZoom(z => Math.min(3, Number((z + 0.1).toFixed(2))))}
+                            className="p-2 rounded-full hover:bg-gray-100"
+                            title="Zoom +"
+                        >
+                            <MagnifyingGlassPlusIcon className="w-6 h-6 text-gray-700" />
+                        </button>
+                        {/* Fullscreen toggle */}
+                        <button
+                            onClick={() => {
+                                const el = containerRef.current;
+                                if (!el) return;
+                                if (document.fullscreenElement) document.exitFullscreen();
+                                else el.requestFullscreen().catch(() => {});
+                            }}
+                            className="p-2 rounded-full hover:bg-gray-100"
+                            title="Plein écran"
+                        >
+                            <ArrowsPointingOutIcon className="w-6 h-6 text-gray-700" />
+                        </button>
                         <button onClick={() => setMenuOpen(!isMenuOpen)} className="p-2 rounded-full hover:bg-gray-100">
                             <EllipsisVerticalIcon className="w-6 h-6 text-gray-700" />
                         </button>
@@ -154,7 +197,7 @@ export function SujetViewPage() {
             </header>
 
             <main className="flex-grow overflow-auto">
-                <div className="flex justify-center p-4">
+                <div ref={containerRef} className="flex justify-center p-0 sm:p-4 h-full">
                     <Document
                         file={pdfSource || subject.pdfUrlResolved || subject.fichier_url || subject.pdfUrl}
                         onLoadSuccess={onDocumentLoadSuccess}
@@ -162,7 +205,12 @@ export function SujetViewPage() {
                         loading={<div className="text-center p-8">Chargement du sujet...</div>}
                         error={<div className="text-center p-8 text-red-500">Erreur de chargement du PDF.</div>}
                     >
-                        <Page pageNumber={pageNumber} renderTextLayer={false} />
+                        <Page
+                            pageNumber={pageNumber}
+                            renderTextLayer={false}
+                            width={containerWidth ? Math.floor(containerWidth) : undefined}
+                            scale={zoom}
+                        />
                     </Document>
                 </div>
             </main>
