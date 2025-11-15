@@ -18,6 +18,7 @@ export function EditSubjectPage() {
     const [selectedUniversityId, setSelectedUniversityId] = useState('');
     const [selectedUniversityName, setSelectedUniversityName] = useState('');
     const [file, setFile] = useState<File | null>(null);
+    const [year, setYear] = useState<string>('');
 
     const [modules, setModules] = useState<Module[]>([]);
     const [universities, setUniversities] = useState<University[]>([]);
@@ -57,6 +58,7 @@ export function EditSubjectPage() {
                 setSelectedModuleName(subject.modules?.nom || '');
                 setSelectedUniversityId(subject.universite_id);
                 setSelectedUniversityName(subject.universites?.nom || '');
+                setYear(subject.annee ? String(subject.annee) : '');
 
                 setModules(modsRes.data.map(m => ({ id: m.id, name: m.nom })));
                 setUniversities(unisRes.data.map(u => ({ id: u.id, name: u.nom })));
@@ -85,9 +87,17 @@ export function EditSubjectPage() {
                 titre: title,
                 module_id: selectedModuleId,
                 universite_id: selectedUniversityId,
+                annee: year ? Number(year) : null,
             };
 
             if (file) {
+                if (file.type !== 'application/pdf') {
+                    throw new Error('Le fichier doit être un PDF.');
+                }
+                const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
+                if (file.size > MAX_SIZE) {
+                    throw new Error('Le fichier dépasse la taille maximale autorisée (25MB).');
+                }
                 const filePath = `public/sujets/${Date.now()}_${file.name.replace(/\s/g, '_')}`;
                 const { error: uploadError } = await supabase.storage.from('sujets').upload(filePath, file);
                 if (uploadError) throw uploadError;
@@ -132,6 +142,19 @@ export function EditSubjectPage() {
                     <div>
                         <label htmlFor="title" className="block text-sm font-medium text-gray-700">Titre du sujet</label>
                         <input type="text" id="title" value={title} onChange={(e) => setTitle(e.target.value)} required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
+                    </div>
+                    <div>
+                        <label htmlFor="year" className="block text-sm font-medium text-gray-700">Année (optionnel)</label>
+                        <input
+                            type="number"
+                            id="year"
+                            min="1900"
+                            max="2100"
+                            value={year}
+                            onChange={(e) => setYear(e.target.value)}
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                            placeholder="Ex: 2023"
+                        />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Module</label>

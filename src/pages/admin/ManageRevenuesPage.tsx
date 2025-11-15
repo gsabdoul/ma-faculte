@@ -30,7 +30,11 @@ export function ManageRevenuesPage() {
     const [allPremiumProfiles, setAllPremiumProfiles] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [subscriptionPrice, setSubscriptionPrice] = useState(5000); // Prix de l'abonnement en FCFA
+    // Utiliser localStorage pour la persistance, avec une valeur par défaut de 5000.
+    const [subscriptionPrice, setSubscriptionPrice] = useState<number>(() => {
+        const savedPrice = localStorage.getItem('subscriptionPrice');
+        return savedPrice ? JSON.parse(savedPrice) : 5000;
+    });
 
     // State for filtering
     const [filterPeriod, setFilterPeriod] = useState('current_month');
@@ -63,6 +67,12 @@ export function ManageRevenuesPage() {
 
         fetchPremiumUsers();
     }, []);
+
+    // Sauvegarder le prix dans localStorage à chaque changement
+    useEffect(() => {
+        localStorage.setItem('subscriptionPrice', JSON.stringify(subscriptionPrice));
+    }, [subscriptionPrice]);
+
 
     const filteredTransactions = useMemo(() => {
         const now = new Date();
@@ -170,10 +180,14 @@ export function ManageRevenuesPage() {
                 <div className="bg-white p-4 rounded-xl shadow-md">
                     <label htmlFor="subscriptionPrice" className="block text-sm font-medium text-gray-700">Prix de l'abonnement (FCFA)</label>
                     <input
-                        type="number"
+                        type="text"
+                        pattern="[0-9]*"
                         id="subscriptionPrice"
                         value={subscriptionPrice}
-                        onChange={(e) => setSubscriptionPrice(Number(e.target.value))}
+                        onChange={(e) => {
+                            const value = e.target.value.replace(/[^0-9]/g, ''); // Accepter uniquement les chiffres
+                            setSubscriptionPrice(Number(value));
+                        }}
                         className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     />
                 </div>

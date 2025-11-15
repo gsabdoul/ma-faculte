@@ -13,6 +13,66 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon-web.png', 'vite.svg'],
+      workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        navigateFallback: '/ma-faculte/index.html',
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6MB
+        runtimeCaching: [
+          {
+            // Cache same-origin images/assets
+            urlPattern: ({ request, sameOrigin }) => sameOrigin && request.destination === 'image',
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'images',
+              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            // Google Fonts stylesheets
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*$/,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'google-fonts-stylesheets',
+            },
+          },
+          {
+            // Google Fonts webfonts
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-webfonts',
+              expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            // PDFs sur n’importe quel domaine avec extension .pdf
+            urlPattern: /\.pdf(\?.*)?$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'pdfs',
+              expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 * 24 * 90 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            // Google Drive et contenus googleusercontent (liens de téléchargement/export)
+            urlPattern: /^https:\/\/(drive\.google\.com|.*googleusercontent\.com)\/.*$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'pdfs-google-drive',
+              expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 * 24 * 90 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
+      },
+      devOptions: {
+        enabled: false,
+      },
       manifest: {
         name: 'Ma Faculté',
         short_name: 'MaFaculté',

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeftIcon, EllipsisVerticalIcon, FlagIcon, BookmarkIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/solid';
+import { ChevronLeftIcon, EllipsisVerticalIcon, FlagIcon, PencilSquareIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/solid';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Modal } from '../components/Modal';
 import { supabase } from '../supabase';
@@ -37,6 +37,19 @@ export function SujetViewPage() {
         window.addEventListener('resize', updateWidth);
         return () => window.removeEventListener('resize', updateWidth);
     }, []);
+
+    
+
+    const handleCorrectionClick = () => {
+        setMenuOpen(false);
+        const hasCorrection = !!subject?.correction && String(subject.correction).trim().length > 0;
+        if (!hasCorrection) {
+            // setInfoMessage('Ce sujet n’a pas encore de correction.'); // Removed as per previous change
+            // setIsInfoOpen(true); // Removed as per previous change
+            return;
+        }
+        navigate(`/sujets/${subject.id}/correction`);
+    };
 
     useEffect(() => {
         if (!sujetId) {
@@ -184,9 +197,9 @@ export function SujetViewPage() {
                         </button>
                         {isMenuOpen && (
                             <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-xl z-30">
-                                <a href="#" className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                    <BookmarkIcon className="w-5 h-5 mr-3" /> Enregistrer
-                                </a>
+                                <button onClick={handleCorrectionClick} className="w-full text-left flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                    <PencilSquareIcon className="w-5 h-5 mr-3" /> Correction
+                                </button>
                                 <button onClick={handleReportClick} className="w-full text-left flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                     <FlagIcon className="w-5 h-5 mr-3" /> Signaler
                                 </button>
@@ -246,6 +259,8 @@ export function SujetViewPage() {
                     <button type="submit" className="w-full mt-4 bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">Envoyer le signalement</button>
                 </form>
             </Modal>
+
+            
         </div>
     );
 }

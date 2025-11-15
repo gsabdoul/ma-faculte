@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { BellIcon, LockClosedIcon } from "@heroicons/react/24/outline";
+import { BellIcon, LockClosedIcon, EllipsisVerticalIcon } from "@heroicons/react/24/outline";
 import { Carousel } from "../components/Carousel";
 import { useNotifications } from "../context/NotificationsContext";
 import { useUser } from "../context/UserContext";
@@ -32,6 +32,8 @@ export function HomePage() {
     const [modules, setModules] = useState<Module[]>([]);
     const [carouselItems, setCarouselItems] = useState<any[]>([]);
     const [loadingModules, setLoadingModules] = useState(true);
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [checkingUpdate, setCheckingUpdate] = useState(false);
 
     useEffect(() => {
         const fetchModules = async () => {
@@ -126,11 +128,24 @@ export function HomePage() {
         navigate(`/modules/${encodedName}/universites`);
     };
 
+    const handleCheckUpdates = async () => {
+        try {
+            setCheckingUpdate(true);
+            const reg = await navigator.serviceWorker.getRegistration();
+            await reg?.update();
+            const fn = (window as any).updateSW;
+            if (typeof fn === 'function') fn();
+        } finally {
+            setCheckingUpdate(false);
+            setIsMenuOpen(false);
+        }
+    };
+
     return (
         <div>
             {/* Header avec angles arrondis */}
             <header className="bg-gradient-to-br from-blue-600 to-blue-800 text-white px-4 sm:px-6 py-4 rounded-b-3xl shadow-lg">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between relative">
                     <div className="flex items-center">
                         {/* Avatar */}
                         <Link to="/profil" className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center border-2 border-white/30 hover:bg-white/30 transition-colors flex-shrink-0">
@@ -142,10 +157,22 @@ export function HomePage() {
                             <h1 className="text-xl font-bold tracking-tight">{profile?.prenom || 'Étudiant'}</h1>
                         </div>
                     </div>
-                    <Link to="/notifications" className="relative p-2 hover:bg-white/10 rounded-full transition-colors flex-shrink-0">
-                        <BellIcon className="w-7 h-7" />
-                        {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>}
-                    </Link>
+                    <div className="flex items-center gap-1">
+                        <Link to="/notifications" className="relative p-2 hover:bg-white/10 rounded-full transition-colors flex-shrink-0">
+                            <BellIcon className="w-7 h-7" />
+                            {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>}
+                        </Link>
+                        <button onClick={() => setIsMenuOpen(v => !v)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                            <EllipsisVerticalIcon className="w-7 h-7" />
+                        </button>
+                    </div>
+                    {isMenuOpen && (
+                        <div className="absolute right-4 top-14 bg-white text-gray-800 rounded-lg shadow-lg border border-gray-200 w-56 z-10">
+                            <button onClick={handleCheckUpdates} className="w-full text-left px-4 py-3 hover:bg-gray-50">
+                                {checkingUpdate ? 'Vérification en cours...' : 'Vérifier les mises à jour'}
+                            </button>
+                        </div>
+                    )}
                 </div>
             </header>
 

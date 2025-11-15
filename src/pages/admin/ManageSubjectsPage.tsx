@@ -10,6 +10,8 @@ import {
     EyeIcon,
 } from '@heroicons/react/24/outline';
 import { supabase } from '../../supabase';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Modal } from '../../components/Modal';
 import { SearchableSelect } from '../../components/SearchableSelect';
 
@@ -31,6 +33,8 @@ interface SubjectInfo {
     moduleName: string;
     universityId: string;
     universityName: string;
+    correction?: string | null;
+    year?: number | null;
     creatorId?: number;
     creatorName?: string;
 }
@@ -43,6 +47,8 @@ const emptySubject = {
     universityId: '',
     universityName: '',
     file: null as File | null,
+    correction: '' as string,
+    year: '' as string | number | ''
 };
 
 export function ManageSubjectsPage() {
@@ -62,7 +68,7 @@ export function ManageSubjectsPage() {
                 const [modsRes, unisRes, sujetsRes] = await Promise.all([
                     supabase.from('modules').select('id, nom'),
                     supabase.from('universites').select('id, nom'),
-                    supabase.from('sujets').select('id, titre, fichier_url, module_id, universite_id'),
+                    supabase.from('sujets').select('id, titre, fichier_url, module_id, universite_id, annee, correction'),
                 ]);
 
                 if (cancelled) return;
@@ -90,6 +96,8 @@ export function ManageSubjectsPage() {
                         moduleName: module?.name || '',
                         universityId: s.universite_id,
                         universityName: uni?.name || '',
+                        correction: s.correction ?? null,
+                        year: s.annee ?? null,
                     };
                     return info;
                 });
@@ -148,54 +156,154 @@ export function ManageSubjectsPage() {
 
     const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
 
+    const MAX_PDF_SIZE = 25 * 1024 * 1024; // 25MB
+    const [formError, setFormError] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     const handleModalFileChange = (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
+            // Validations côté client
+            if (file.type !== 'application/pdf') {
+                setFormError('Le fichier doit être un PDF.');
+                return;
+            }
+            if (file.size > MAX_PDF_SIZE) {
+                setFormError('Le fichier PDF dépasse 25 MB.');
+                return;
+            }
+            setFormError(null);
             setActiveSubject(prev => ({ ...prev, file }));
         }
     };
-
-    const handleModalSubmit = (e: FormEvent) => {
+    
+    const handleModalSubmit = async (e: FormEvent) => {
         e.preventDefault();
-        if (activeSubject.id) {
-            // Logique de mise à jour
-            setAllSubjects(prevSubjects =>
-                prevSubjects.map(subject =>
-                    subject.id === activeSubject.id
-                        ? {
-                            ...subject,
-                            title: activeSubject.title,
-                            moduleName: activeSubject.moduleName,
-                            universityName: activeSubject.universityName,
-                            // Le fichier n'est mis à jour que s'il est changé
-                            fileSize: activeSubject.file ? `${(activeSubject.file.size / 1024).toFixed(2)} KB` : subject.fileSize,
-                        }
-                        : subject
-                )
-            );
-        } else {
-            // Logique d'ajout (existante)
-            const newEntry: SubjectInfo = {
-                id: `new-subject-${Date.now()}`,
-                title: activeSubject.title,
-                fileSize: activeSubject.file ? `${(activeSubject.file.size / 1024).toFixed(2)} KB` : 'N/A',
-                pdfUrl: '#', // URL factice
-                moduleId: activeSubject.moduleId,
-                moduleName: activeSubject.moduleName,
-                universityId: activeSubject.universityId,
-                universityName: activeSubject.universityName,
-                creatorId: 99, // ID de l'utilisateur connecté (factice)
-                creatorName: 'Admin Actuel',
-            };
-            setAllSubjects(prev => [newEntry, ...prev]);
+        setFormError(null);
+
+        // Champs requis
+        if (!activeSubject.title || !activeSubject.moduleId || !activeSubject.universityId) {
+            setFormError('Veuillez renseigner le titre, le module et l’université.');
+            return;
         }
-        setIsModalOpen(false);
+
+        try {
+            setIsSubmitting(true);
+
+            // Helper pour upload PDF et récupérer l’URL publique
+            const uploadIfNeeded = async (): Promise<string | null> => {
+                if (!activeSubject.file) return null;
+                const filename = `${Date.now()}_${activeSubject.file.name}`;
+                const objectPath = `public/sujets/${filename}`;
+                const uploadRes = await supabase
+                    .storage
+                    .from('sujets')
+                    .upload(objectPath, activeSubject.file, {
+                        contentType: 'application/pdf',
+                        upsert: false,
+                    });
+                if (uploadRes.error) throw uploadRes.error;
+                const { data: publicData } = supabase.storage.from('sujets').getPublicUrl(objectPath);
+                return publicData.publicUrl || null;
+            };
+
+            if (activeSubject.id) {
+                // Mise à jour
+                const maybeUrl = await uploadIfNeeded();
+                const updatePayload: any = {
+                    titre: activeSubject.title,
+                    module_id: activeSubject.moduleId,
+                    universite_id: activeSubject.universityId,
+                };
+                if (activeSubject.year !== '' && activeSubject.year !== null) {
+                    updatePayload.annee = Number(activeSubject.year);
+                } else {
+                    updatePayload.annee = null;
+                }
+                updatePayload.correction = activeSubject.correction ? String(activeSubject.correction) : null;
+                if (maybeUrl) {
+                    updatePayload.fichier_url = maybeUrl;
+                }
+                const updateRes = await supabase
+                    .from('sujets')
+                    .update(updatePayload)
+                    .eq('id', activeSubject.id)
+                    .select()
+                    .single();
+                if (updateRes.error) throw updateRes.error;
+
+                const updated = updateRes.data;
+                const module = modules.find(m => m.id === updated.module_id);
+                const uni = universities.find(u => u.id === updated.universite_id);
+                setAllSubjects(prev => prev.map(s => s.id === activeSubject.id ? {
+                    id: updated.id,
+                    title: updated.titre || 'Sans titre',
+                    fileSize: s.fileSize,
+                    pdfUrl: updated.fichier_url || s.pdfUrl,
+                    moduleId: updated.module_id,
+                    moduleName: module?.name || '',
+                    universityId: updated.universite_id,
+                    universityName: uni?.name || '',
+                    correction: updated.correction ?? null,
+                    year: updated.annee ?? null,
+                } : s));
+            } else {
+                // Ajout
+                if (!activeSubject.file) {
+                    setFormError('Le fichier PDF est requis pour l’ajout.');
+                    setIsSubmitting(false);
+                    return;
+                }
+                const publicUrl = await uploadIfNeeded();
+                const insertRes = await supabase
+                    .from('sujets')
+                    .insert({
+                        titre: activeSubject.title,
+                        module_id: activeSubject.moduleId,
+                        universite_id: activeSubject.universityId,
+                        fichier_url: publicUrl,
+                        correction: activeSubject.correction ? String(activeSubject.correction) : null,
+                        annee: activeSubject.year !== '' && activeSubject.year !== null ? Number(activeSubject.year) : null,
+                    })
+                    .select()
+                    .single();
+                if (insertRes.error) throw insertRes.error;
+                const inserted = insertRes.data;
+                const module = modules.find(m => m.id === inserted.module_id);
+                const uni = universities.find(u => u.id === inserted.universite_id);
+                const newEntry: SubjectInfo = {
+                    id: inserted.id,
+                    title: inserted.titre || 'Sans titre',
+                    fileSize: activeSubject.file ? `${(activeSubject.file.size / 1024).toFixed(2)} KB` : 'N/A',
+                    pdfUrl: inserted.fichier_url || '#',
+                    moduleId: inserted.module_id,
+                    moduleName: module?.name || '',
+                    universityId: inserted.universite_id,
+                    universityName: uni?.name || '',
+                    correction: inserted.correction ?? null,
+                    year: inserted.annee ?? null,
+                };
+                setAllSubjects(prev => [newEntry, ...prev]);
+            }
+            setIsModalOpen(false);
+        } catch (err: any) {
+            setFormError(err?.message || 'Une erreur est survenue.');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
-    const handleDeleteSubject = () => {
+    const handleDeleteSubject = async () => {
         if (!subjectToDelete) return;
-        setAllSubjects(prev => prev.filter(s => s.id !== subjectToDelete.id));
-        setSubjectToDelete(null); // Ferme la modale
+        try {
+            const delRes = await supabase.from('sujets').delete().eq('id', subjectToDelete.id);
+            if (delRes.error) throw delRes.error;
+            setAllSubjects(prev => prev.filter(s => s.id !== subjectToDelete.id));
+        } catch (err: any) {
+            // Optionally surface deletion errors in future UI
+        } finally {
+            setSubjectToDelete(null);
+        }
     };
 
     const openModalForEdit = (subject: SubjectInfo) => {
@@ -209,6 +317,8 @@ export function ManageSubjectsPage() {
             universityId: university?.id || '',
             universityName: university?.name || subject.universityName,
             file: null, // Ne pas pré-remplir le fichier
+            correction: subject.correction || '',
+            year: subject.year ?? ''
         });
         setIsModalOpen(true);
     };
@@ -341,6 +451,40 @@ export function ManageSubjectsPage() {
                             />
                         </div>
                         <div>
+                            <label htmlFor="year" className="block text-sm font-medium text-gray-700">Année (optionnel)</label>
+                            <input
+                                type="number"
+                                name="year"
+                                id="year"
+                                min={1900}
+                                max={2100}
+                                value={activeSubject.year as number | ''}
+                                onChange={(e) => setActiveSubject(prev => ({ ...prev, year: e.target.value }))}
+                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Ex: 2023"
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="correction" className="block text-sm font-medium text-gray-700">Correction (Markdown)</label>
+                            <textarea
+                                name="correction"
+                                id="correction"
+                                rows={6}
+                                value={(activeSubject as any).correction || ''}
+                                onChange={(e) => setActiveSubject(prev => ({ ...prev, correction: e.target.value }))}
+                                placeholder="Saisissez la correction en Markdown (titres, listes, liens, tableaux...)"
+                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                            />
+                            <p className="mt-1 text-xs text-gray-500">Aperçu ci-dessous. Prend en charge GFM (listes, tableaux, etc.).</p>
+                            <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                                <div className="prose prose-sm max-w-none">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                        {(((activeSubject as any).correction || '') as string).trim()}
+                                    </ReactMarkdown>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
                             <label htmlFor="file" className="block text-sm font-medium text-gray-700">
                                 Fichier PDF {activeSubject.id && <span className="text-xs text-gray-500">(Optionnel: laisser vide pour ne pas changer)</span>}
                             </label>
@@ -353,6 +497,10 @@ export function ManageSubjectsPage() {
                                 onChange={handleModalFileChange}
                                 className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                             />
+                            {formError && (
+                                <p className="mt-2 text-sm text-red-600">{formError}</p>
+                            )}
+                            <p className="mt-1 text-xs text-gray-500">PDF uniquement, taille maximale 25 MB.</p>
                         </div>
                     </div>
                     <div className="mt-6 flex justify-end space-x-3">
@@ -363,7 +511,7 @@ export function ManageSubjectsPage() {
                         >
                             Annuler
                         </button>
-                        <button type="submit" className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">{activeSubject.id ? 'Enregistrer' : 'Ajouter'}</button>
+                        <button type="submit" disabled={isSubmitting} className="bg-blue-600 disabled:bg-blue-300 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">{activeSubject.id ? 'Enregistrer' : 'Ajouter'}</button>
                     </div>
                 </form>
             </Modal>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Modal } from './components/Modal';
 import InstallPrompt from './components/InstallPrompt';
@@ -14,6 +14,10 @@ export default function App() {
         setNeedsRefresh(true);
       },
     }), []);
+
+  useEffect(() => {
+    (window as any).updateSW = updateSW;
+  }, [updateSW]);
 
   const closePrompt = () => setNeedsRefresh(false);
   const doRefresh = () => {

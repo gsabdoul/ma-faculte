@@ -7,6 +7,7 @@ import { ProfilePage } from "./pages/ProfilePage"; // <- Chemin correct
 import { UniversitePage } from "./pages/UniversitePage";
 import { SujetPage } from "./pages/SujetPage";
 import { SujetViewPage } from "./pages/SujetViewPage";
+import { SujetCorrectionPage } from "./pages/SujetCorrectionPage";
 import { EditProfilePage } from "./pages/EditProfilePage";
 import { SubscriptionPage } from "./pages/SubscriptionPage";
 import { TeamPage } from "./pages/TeamPage";
@@ -59,6 +60,7 @@ export const router = createHashRouter([
                     { path: "modules/:moduleId/universites", element: <UniversitePage /> },
                     { path: "modules/:moduleId/universites/:universityId/sujets", element: <SujetPage /> },
                     { path: "sujets/:sujetId", element: <SujetViewPage /> },
+                    { path: "sujets/:sujetId/correction", element: <SujetCorrectionPage /> },
                     { path: "notifications", element: <NotificationsPage /> },
                 ]
             },

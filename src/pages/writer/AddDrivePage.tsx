@@ -5,6 +5,8 @@ import { supabase } from '../../supabase';
 import { ConfirmationModal } from '../../components/ConfirmationModal';
 import { SearchableSelect } from '../../components/SearchableSelect'; // Assuming this component exists and is reusable
 import { useUser } from '../../context/UserContext'; // To get the current user's ID for created_by
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 type Faculty = { id: string; name: string };
 type Niveau = { id: string; name: string };
@@ -144,6 +146,14 @@ export function AddDrivePage() {
                             rows={3}
                             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                         ></textarea>
+                        <p className="mt-1 text-xs text-gray-500">Aperçu ci-dessous. Prend en charge GFM (liens, listes, tableaux).</p>
+                        <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                            <div className="prose prose-sm max-w-none">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {(description || '').trim()}
+                                </ReactMarkdown>
+                            </div>
+                        </div>
                     </div>
                     <div>
                         <label htmlFor="url" className="block text-sm font-medium text-gray-700">URL du drive</label>

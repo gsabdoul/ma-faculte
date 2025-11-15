@@ -8,15 +8,22 @@ const DownloadButton: React.FC<{ url?: string | null }> = ({ url }) => {
     const cached = useCachedStatus(url);
     if (!url || cached) return null;
     return (
-        <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
+        <button
+            onClick={async (e) => {
+                e.preventDefault();
+                if (!url || typeof caches === 'undefined') return;
+                try {
+                    const cache = await caches.open('offline-pdfs');
+                    await cache.add(url);
+                } catch (err) {
+                    // Silencieux: si l'ajout échoue, rien ne se passe
+                }
+            }}
             className="p-2 rounded-full hover:bg-blue-50"
-            title="Télécharger le sujet"
+            title="Enregistrer pour lecture hors ligne"
         >
             <DocumentArrowDownIcon className="w-6 h-6 text-blue-600" />
-        </a>
+        </button>
     );
 };
 
@@ -159,6 +166,14 @@ export function SujetPage() {
                             key={sujet.id}
                             to={`/sujets/${sujet.id}`}
                             className="flex items-center p-4 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow"
+                            onClick={async () => {
+                                const url = sujet.pdfUrlResolved || sujet.fichier_url || sujet.pdfUrl;
+                                if (!url || typeof caches === 'undefined') return;
+                                try {
+                                    const cache = await caches.open('offline-pdfs');
+                                    await cache.add(url);
+                                } catch {}
+                            }}
                         >
                             <DocumentTextIcon className="w-10 h-10 text-blue-500 mr-4" />
                             <div className="flex-grow">

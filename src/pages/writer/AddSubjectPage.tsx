@@ -18,6 +18,7 @@ export function AddSubjectPage() {
     const [selectedUniversityId, setSelectedUniversityId] = useState('');
     const [selectedUniversityName, setSelectedUniversityName] = useState('');
     const [file, setFile] = useState<File | null>(null);
+    const [year, setYear] = useState<string>('');
     const [modules, setModules] = useState<Module[]>([]);
     const [universities, setUniversities] = useState<University[]>([]);
     const [loading, setLoading] = useState(true);
@@ -63,6 +64,17 @@ export function AddSubjectPage() {
             return;
         }
 
+        // Validation basique du fichier PDF
+        if (file && file.type !== 'application/pdf') {
+            setError('Le fichier doit être un PDF.');
+            return;
+        }
+        const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
+        if (file && file.size > MAX_SIZE) {
+            setError('Le fichier dépasse la taille maximale autorisée (25MB).');
+            return;
+        }
+
         setSubmitting(true);
         setError(null);
 
@@ -93,7 +105,7 @@ export function AddSubjectPage() {
                 fichier_url: publicUrl,
                 taille_fichier: file.size,
                 created_by: user.id, // Ajout de l'ID de l'utilisateur
-                // annee: ... (if you want to add an input for year)
+                annee: year ? Number(year) : null,
             });
 
             if (insertError) throw insertError;
@@ -112,6 +124,7 @@ export function AddSubjectPage() {
             setSelectedUniversityId('');
             setSelectedUniversityName('');
             setFile(null);
+            setYear('');
 
         } catch (err: any) {
             setError(err.message || "Une erreur est survenue lors de l'ajout du sujet.");
@@ -149,6 +162,20 @@ export function AddSubjectPage() {
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                             required
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="year" className="block text-sm font-medium text-gray-700">Année (optionnel)</label>
+                        <input
+                            type="number"
+                            name="year"
+                            id="year"
+                            min="1900"
+                            max="2100"
+                            value={year}
+                            onChange={(e) => setYear(e.target.value)}
+                            placeholder="Ex: 2023"
                             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                         />
                     </div>

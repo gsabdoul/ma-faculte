@@ -4,6 +4,8 @@ import { ChevronLeftIcon } from '@heroicons/react/24/outline';
 import { supabase } from '../../supabase';
 import { ConfirmationModal } from '../../components/ConfirmationModal';
 import { SearchableSelect } from '../../components/SearchableSelect';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 type Faculty = { id: string; name: string };
 type Niveau = { id: string; name: string };
@@ -122,6 +124,14 @@ export function EditDrivePage() {
                     <div>
                         <label htmlFor="description" className="block text-sm font-medium text-gray-700">Description</label>
                         <textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"></textarea>
+                        <p className="mt-1 text-xs text-gray-500">Aperçu ci-dessous. Prend en charge GFM (liens, listes, tableaux).</p>
+                        <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                            <div className="prose prose-sm max-w-none">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {(description || '').trim()}
+                                </ReactMarkdown>
+                            </div>
+                        </div>
                     </div>
                     <div>
                         <label htmlFor="url" className="block text-sm font-medium text-gray-700">URL</label>

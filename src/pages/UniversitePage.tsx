@@ -22,15 +22,21 @@ export function UniversitePage() {
         }
 
         let cancel = false;
+        const isUUID = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
         const load = async () => {
             setLoading(true);
             setError(null);
             try {
-                // Try to resolve module by id first
-                let modRes = await supabase.from('modules').select('*').eq('id', moduleId).maybeSingle();
-                let resolvedModule = modRes.data || null;
-
-                // If not found by id, try to resolve by name/slug (case-insensitive starts with)
+                let resolvedModule: any = null;
+                if (isUUID(moduleId)) {
+                    const byId = await supabase.from('modules').select('*').eq('id', moduleId).maybeSingle();
+                    resolvedModule = byId.data || null;
+                }
+                if (!resolvedModule) {
+                    const moduleName = decodeURIComponent(moduleId);
+                    const byExactName = await supabase.from('modules').select('*').eq('nom', moduleName).maybeSingle();
+                    resolvedModule = byExactName.data || null;
+                }
                 if (!resolvedModule) {
                     const byName = await supabase.from('modules').select('*').ilike('nom', `${moduleId}%`).limit(1).maybeSingle();
                     resolvedModule = byName.data || null;
