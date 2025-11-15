@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 interface CarouselItem {
   id: string;
   imageUrl: string;
@@ -13,22 +13,93 @@ interface CarouselProps {
 
 export function Carousel({ items }: CarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const intervalRef = useRef<number | null>(null);
+  const draggingRef = useRef(false);
+  const startXRef = useRef<number | null>(null);
 
   useEffect(() => {
     // Si il n'y a pas d'items ou un seul, on n'active pas le défilement
     if (items.length <= 1) return;
 
-    const interval = setInterval(() => {
-      setCurrentIndex((prevIndex) => (prevIndex + 1) % items.length);
-    }, 3000); // Change d'image toutes les 3 secondes
+    const startAutoPlay = () => {
+      stopAutoPlay();
+      intervalRef.current = window.setInterval(() => {
+        setCurrentIndex((prevIndex) => (prevIndex + 1) % items.length);
+      }, 3000);
+    };
 
-    // Nettoyage de l'intervalle quand le composant est démonté pour éviter les fuites de mémoire
-    return () => clearInterval(interval);
+    const stopAutoPlay = () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+
+    startAutoPlay();
+    return () => stopAutoPlay();
   }, [items.length]);
+
+  const stopAutoPlay = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
+  const startAutoPlay = () => {
+    if (items.length <= 1) return;
+    if (!intervalRef.current) {
+      intervalRef.current = window.setInterval(() => {
+        setCurrentIndex((prevIndex) => (prevIndex + 1) % items.length);
+      }, 3000);
+    }
+  };
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    draggingRef.current = true;
+    startXRef.current = e.clientX;
+    stopAutoPlay();
+  };
+
+  const onPointerMove = (_e: React.PointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current || startXRef.current === null) return;
+    // On pourrait ajouter un effet de translate ici si souhaité
+  };
+
+  const finishDrag = (clientX: number) => {
+    if (!draggingRef.current || startXRef.current === null) return;
+    const delta = clientX - startXRef.current;
+    const threshold = 50; // pixels
+    if (delta > threshold) {
+      // swipe droite -> image précédente
+      setCurrentIndex((prev) => (prev - 1 + items.length) % items.length);
+    } else if (delta < -threshold) {
+      // swipe gauche -> image suivante
+      setCurrentIndex((prev) => (prev + 1) % items.length);
+    }
+    draggingRef.current = false;
+    startXRef.current = null;
+    startAutoPlay();
+  };
+
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    finishDrag(e.clientX);
+  };
+
+  const onPointerLeave = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (draggingRef.current) finishDrag(e.clientX);
+  };
 
   return (
     // Le "rectangle" qui contient le carrousel
-    <div className="relative w-full h-40 overflow-hidden rounded-lg shadow-lg">
+    <div
+      className="relative w-full h-40 overflow-hidden rounded-lg shadow-lg select-none"
+      style={{ touchAction: 'pan-y' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerLeave}
+    >
       {items.map((item, index) => (
         <div
           key={item.id}
