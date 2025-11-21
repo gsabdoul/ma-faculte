@@ -114,7 +114,7 @@ export function ProfilePage() {
     },
     {
       icon: DocumentTextIcon,
-      text: "Termes et conditions d'utilisation",
+      text: "Termes et conditions d\'utilisation",
       onClick: () => window.open('https://drive.google.com/file/d/147PFQ1cSDWwEbBFSCRjeowEFTLgJ4J8n/view?usp=sharing', '_blank')
     },
     { icon: ShareIcon, text: "Partager l'application", onClick: handleShare },

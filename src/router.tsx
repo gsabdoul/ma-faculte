@@ -35,6 +35,7 @@ import { EditBookPage } from './pages/writer/EditBookPage';
 import { EditDrivePage } from './pages/writer/EditDrivePage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
+import Chat from './pages/chat';
 
 export const router = createHashRouter([
     {
@@ -55,6 +56,7 @@ export const router = createHashRouter([
                 children: [
                     { path: "home", element: <HomePage /> },
                     { path: "drives", element: <DrivesPage /> },
+                    { path: "chat", element: <Chat /> },
                     { path: "livres", element: <BooksPage /> },
                     { path: "profil", element: <ProfilePage /> }, // Note: les sous-routes de profil sont en dehors du MainLayout
                     { path: "modules/:moduleId/universites", element: <UniversitePage /> },

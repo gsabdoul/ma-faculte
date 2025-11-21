@@ -1,9 +1,17 @@
 import { NavLink } from 'react-router-dom';
 import { HomeIcon, FolderIcon, BookOpenIcon, UserIcon } from '@heroicons/react/24/solid';
 
+// Icône chat personnalisée
+const ChatIcon = ({ className }: { className?: string }) => (
+    <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+        <path d="M12 2C6.48 2 2 6.48 2 12c0 1.54.36 3 .97 4.29L2 22l5.71-.97C9 21.64 10.46 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.31 0-2.56-.3-3.68-.84l-.27-.14-2.81.47.47-2.81-.14-.27A7.934 7.934 0 014 12c0-4.42 3.58-8 8-8s8 3.58 8 8-3.58 8-8 8z" />
+    </svg>
+);
+
 const navItems = [
     { path: '/', label: 'Accueil', icon: HomeIcon },
     { path: '/drives', label: 'Drives', icon: FolderIcon },
+    { path: '/chat', label: 'Chat', icon: ChatIcon },
     { path: '/livres', label: 'Livres', icon: BookOpenIcon },
     { path: '/profil', label: 'Profil', icon: UserIcon },
 ];

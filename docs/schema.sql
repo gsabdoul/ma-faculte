@@ -1,6 +1,14 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
+CREATE TABLE public.conversations (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid,
+  title text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT conversations_pkey PRIMARY KEY (id),
+  CONSTRAINT conversations_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
 CREATE TABLE public.drives (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   titre character varying NOT NULL,
@@ -55,6 +63,17 @@ CREATE TABLE public.livres (
   CONSTRAINT livres_pkey PRIMARY KEY (id),
   CONSTRAINT livres_module_id_fkey FOREIGN KEY (module_id) REFERENCES public.modules(id),
   CONSTRAINT livres_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id)
+);
+CREATE TABLE public.messages (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid NOT NULL,
+  content text CHECK (char_length(content) > 0),
+  is_ai boolean DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
+  conversation_id bigint,
+  CONSTRAINT messages_pkey PRIMARY KEY (id),
+  CONSTRAINT messages_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id)
 );
 CREATE TABLE public.module_faculte_niveau (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
