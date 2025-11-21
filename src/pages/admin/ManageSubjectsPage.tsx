@@ -12,8 +12,8 @@ import {
 import { supabase } from '../../supabase';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Modal } from '../../components/Modal';
-import { SearchableSelect } from '../../components/SearchableSelect';
+import { Modal } from '../../components/ui/Modal';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
 
 type ModuleId = string;
 
@@ -176,7 +176,7 @@ export function ManageSubjectsPage() {
             setActiveSubject(prev => ({ ...prev, file }));
         }
     };
-    
+
     const handleModalSubmit = async (e: FormEvent) => {
         e.preventDefault();
         setFormError(null);
@@ -436,7 +436,7 @@ export function ManageSubjectsPage() {
                             <SearchableSelect
                                 options={modules}
                                 value={activeSubject.moduleName}
-                                onChange={(option) => setActiveSubject(prev => ({ ...prev, moduleId: option?.id || '', moduleName: option?.name || '', universityId: '', universityName: '' }))}
+                                onChange={(option: any) => setActiveSubject(prev => ({ ...prev, moduleId: option?.id || '', moduleName: option?.name || '', universityId: '', universityName: '' }))}
                                 placeholder="Rechercher un module..."
                             />
                         </div>
@@ -445,7 +445,7 @@ export function ManageSubjectsPage() {
                             <SearchableSelect
                                 options={universitiesByModule[activeSubject.moduleId as ModuleId] || []}
                                 value={activeSubject.universityName}
-                                onChange={(option) => setActiveSubject(prev => ({ ...prev, universityId: option?.id || '', universityName: option?.name || '' }))}
+                                onChange={(option: any) => setActiveSubject(prev => ({ ...prev, universityId: option?.id || '', universityName: option?.name || '' }))}
                                 disabled={!activeSubject.moduleId}
                                 placeholder={!activeSubject.moduleId ? "Sélectionnez d'abord un module" : "Rechercher une université..."}
                             />

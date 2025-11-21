@@ -1,5 +1,5 @@
 import { createHashRouter, Navigate } from "react-router-dom";
-import { MainLayout } from "./components/layout/MainLayout"; // <- Chemin correct
+import { MainLayout } from "./layouts/MainLayout";
 import { HomePage } from "./pages/HomePage"; // <- Chemin correct
 import { DrivesPage } from "./pages/DrivesPage"; // <- Chemin correct
 import { BooksPage } from "./pages/BooksPage"; // <- Chemin correct
@@ -12,7 +12,7 @@ import { EditProfilePage } from "./pages/EditProfilePage";
 import { SubscriptionPage } from "./pages/SubscriptionPage";
 import { TeamPage } from "./pages/TeamPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
-import { AdminLayout } from './components/layout/AdminLayout';
+import { AdminLayout } from './layouts/AdminLayout';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { ManageUsersPage } from './pages/admin/ManageUsersPage';
 import { ManageSubjectsPage } from './pages/admin/ManageSubjectsPage';
@@ -35,7 +35,7 @@ import { EditBookPage } from './pages/writer/EditBookPage';
 import { EditDrivePage } from './pages/writer/EditDrivePage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
-import Chat from './pages/chat';
+import { ChatPage } from './pages/ChatPage';
 
 export const router = createHashRouter([
     {
@@ -56,7 +56,7 @@ export const router = createHashRouter([
                 children: [
                     { path: "home", element: <HomePage /> },
                     { path: "drives", element: <DrivesPage /> },
-                    { path: "chat", element: <Chat /> },
+                    { path: "chat", element: <ChatPage /> },
                     { path: "livres", element: <BooksPage /> },
                     { path: "profil", element: <ProfilePage /> }, // Note: les sous-routes de profil sont en dehors du MainLayout
                     { path: "modules/:moduleId/universites", element: <UniversitePage /> },

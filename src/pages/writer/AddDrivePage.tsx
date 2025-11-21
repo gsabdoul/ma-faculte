@@ -1,14 +1,18 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeftIcon } from '@heroicons/react/24/outline';
-import { supabase } from '../../supabase';
-import { ConfirmationModal } from '../../components/ConfirmationModal';
-import { SearchableSelect } from '../../components/SearchableSelect'; // Assuming this component exists and is reusable
-import { useUser } from '../../context/UserContext'; // To get the current user's ID for created_by
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { supabase } from '../../supabase';
+import { useUser } from '../../hooks/useUser';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
+import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
 
-type Faculty = { id: string; name: string };
+interface Faculty {
+    id: string;
+    name: string;
+}
+
 type Niveau = { id: string; name: string };
 
 export function AddDrivePage() {
@@ -44,8 +48,8 @@ export function AddDrivePage() {
                 if (facRes.error) throw facRes.error;
                 if (nivRes.error) throw nivRes.error;
 
-                setFaculties(facRes.data.map(f => ({ id: f.id, name: f.nom })));
-                setNiveaux(nivRes.data.map(n => ({ id: n.id, name: n.nom })));
+                setFaculties(facRes.data.map((f: any) => ({ id: f.id, name: f.nom })));
+                setNiveaux(nivRes.data.map((n: any) => ({ id: n.id, name: n.nom })));
             } catch (err: any) {
                 setError(err.message);
             } finally {
@@ -172,7 +176,7 @@ export function AddDrivePage() {
                         <SearchableSelect
                             options={faculties.map(f => ({ id: f.id, name: f.name }))}
                             value={selectedFacultyName}
-                            onChange={(option) => {
+                            onChange={(option: any) => {
                                 setSelectedFacultyId(option?.id || '');
                                 setSelectedFacultyName(option?.name || '');
                             }}
@@ -184,7 +188,7 @@ export function AddDrivePage() {
                         <SearchableSelect
                             options={niveaux.map(n => ({ id: n.id, name: n.name }))}
                             value={selectedNiveauName}
-                            onChange={(option) => {
+                            onChange={(option: any) => {
                                 setSelectedNiveauId(option?.id || '');
                                 setSelectedNiveauName(option?.name || '');
                             }}

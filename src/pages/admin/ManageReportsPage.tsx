@@ -3,7 +3,7 @@ import { supabase } from '../../supabase';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { TagIcon, UserCircleIcon, ChevronUpDownIcon, LinkIcon, PencilIcon, ChatBubbleLeftEllipsisIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import { Modal } from '../../components/Modal';
+import { Modal } from '../../components/ui/Modal';
 
 type ReportStatus = 'en_attente' | 'en_cours' | 'resolu' | 'rejete';
 

@@ -14,7 +14,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '../../supabase';
-import { ConfirmationModal } from '../../components/ConfirmationModal';
+import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
 
 interface Creation {
     id: string;

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeftIcon, EllipsisVerticalIcon, FlagIcon, PencilSquareIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon, XMarkIcon } from '@heroicons/react/24/solid';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { Modal } from '../components/Modal';
+import { Modal } from '../components/ui/Modal';
 import { ChatInterface } from '../components/ChatInterface';
 import { supabase } from '../supabase';
 import 'react-pdf/dist/Page/AnnotationLayer.css';

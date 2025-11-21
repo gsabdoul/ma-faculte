@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabase';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { Modal } from '../../components/Modal';
+import { Modal } from '../../components/ui/Modal';
 
 interface Module {
     id: string;

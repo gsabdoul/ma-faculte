@@ -1,11 +1,14 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeftIcon } from '@heroicons/react/24/outline';
+import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
-import { ConfirmationModal } from '../../components/ConfirmationModal';
-import { SearchableSelect } from '../../components/SearchableSelect';
+import { ChevronLeftIcon } from '@heroicons/react/24/outline';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
+import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
 
-type Module = { id: string; name: string };
+interface Module {
+    id: string;
+    name: string;
+}
 
 export function EditBookPage() {
     const { bookId } = useParams<{ bookId: string }>();
@@ -51,7 +54,7 @@ export function EditBookPage() {
                 setSelectedModuleId(book.module_id);
                 setSelectedModuleName(book.modules?.nom || '');
 
-                setModules(modsRes.data.map(m => ({ id: m.id, name: m.nom })));
+                setModules(modsRes.data.map((m: any) => ({ id: m.id, name: m.nom })));
             } catch (err: any) {
                 setError(err.message);
             } finally {
@@ -132,7 +135,7 @@ export function EditBookPage() {
                         <SearchableSelect
                             options={modules}
                             value={selectedModuleName}
-                            onChange={(option) => {
+                            onChange={(option: any) => {
                                 setSelectedModuleId(option?.id || '');
                                 setSelectedModuleName(option?.name || '');
                             }}

@@ -16,7 +16,7 @@ import { useUser } from '../context/UserContext';
 import { supabase } from '../supabase';
 import { useCallback } from 'react';
 import { useModal } from '../hooks/useModal';
-import { ConfirmationModal } from '../components/ConfirmationModal';
+import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 
 interface ProfileListItemProps {
   icon: React.ElementType;

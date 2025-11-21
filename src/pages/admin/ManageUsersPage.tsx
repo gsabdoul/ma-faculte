@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { PencilIcon, TrashIcon, UserPlusIcon, MagnifyingGlassIcon, CheckCircleIcon, SparklesIcon, UserCircleIcon, ClipboardDocumentIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from '@heroicons/react/24/outline';
-import { Modal } from '../../components/Modal';
+import { Modal } from '../../components/ui/Modal';
 import { supabase } from '../../supabase';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';

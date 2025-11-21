@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { BellIcon, LockClosedIcon } from "@heroicons/react/24/outline";
-import { Carousel } from "../components/Carousel";
+import { Carousel } from "../components/ui/Carousel";
 import { useNotifications } from "../context/NotificationsContext";
 import { useUser } from "../context/UserContext";
 import { supabase } from "../supabase";

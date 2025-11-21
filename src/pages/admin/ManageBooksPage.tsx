@@ -9,8 +9,8 @@ import {
     PlusIcon,
 } from '@heroicons/react/24/outline';
 import { supabase } from '../../supabase';
-import { Modal } from '../../components/Modal';
-import { ConfirmationModal } from '../../components/ConfirmationModal'; // Import the shared ConfirmationModal
+import { Modal } from '../../components/ui/Modal';
+import { ConfirmationModal } from '../../components/ui/ConfirmationModal'; // Import the shared ConfirmationModal
 
 interface Book {
     id: string;

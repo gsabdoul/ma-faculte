@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
-import { Modal } from './components/Modal';
-import InstallPrompt from './components/InstallPrompt';
+import { Modal } from './components/ui/Modal';
+import InstallPrompt from './components/ui/InstallPrompt';
 import { registerSW } from 'virtual:pwa-register';
 
 export default function App() {

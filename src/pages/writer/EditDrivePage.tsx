@@ -1,14 +1,21 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeftIcon } from '@heroicons/react/24/outline';
-import { supabase } from '../../supabase';
-import { ConfirmationModal } from '../../components/ConfirmationModal';
-import { SearchableSelect } from '../../components/SearchableSelect';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { supabase } from '../../supabase';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
+import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
 
-type Faculty = { id: string; name: string };
-type Niveau = { id: string; name: string };
+interface Faculty {
+    id: string;
+    name: string;
+}
+
+interface Niveau {
+    id: string;
+    name: string;
+}
 
 export function EditDrivePage() {
     const { driveId } = useParams<{ driveId: string }>();
@@ -62,8 +69,8 @@ export function EditDrivePage() {
                 setSelectedNiveauId(drive.niveau_id);
                 setSelectedNiveauName(drive.niveaux?.nom || '');
 
-                setFaculties(facRes.data.map(f => ({ id: f.id, name: f.nom })));
-                setNiveaux(nivRes.data.map(n => ({ id: n.id, name: n.nom })));
+                setFaculties(facRes.data.map((f: any) => ({ id: f.id, name: f.nom })));
+                setNiveaux(nivRes.data.map((n: any) => ({ id: n.id, name: n.nom })));
             } catch (err: any) {
                 setError(err.message);
             } finally {
@@ -142,7 +149,7 @@ export function EditDrivePage() {
                         <SearchableSelect
                             options={faculties}
                             value={selectedFacultyName}
-                            onChange={(option) => {
+                            onChange={(option: any) => {
                                 setSelectedFacultyId(option?.id || '');
                                 setSelectedFacultyName(option?.name || '');
                             }}
@@ -153,7 +160,7 @@ export function EditDrivePage() {
                         <SearchableSelect
                             options={niveaux}
                             value={selectedNiveauName}
-                            onChange={(option) => {
+                            onChange={(option: any) => {
                                 setSelectedNiveauId(option?.id || '');
                                 setSelectedNiveauName(option?.name || '');
                             }}

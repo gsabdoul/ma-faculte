@@ -34,7 +34,7 @@ Deno.serve(async (req: Request) => {
         }
 
         // 3. Format for Gemini
-        let systemInstruction = "Tu es un assistant pédagogique intelligent pour une application universitaire."
+        let systemInstruction = "Tu es un assistant pédagogique intelligent pour une application universitaire denommée (Ma faculté)."
 
         if (userContext) {
             systemInstruction += `\n\nContexte de l'étudiant :
@@ -58,10 +58,10 @@ Deno.serve(async (req: Request) => {
 
         const currentMessageParts: any[] = [{ text: lastMessage.text }];
 
-        // Si un PDF est fourni, le télécharger et l'ajouter
+        // Si un PDF est fourni (contexte sujet), le télécharger et l'ajouter
         if (subjectContext && subjectContext.url) {
             try {
-                console.log('Downloading PDF from:', subjectContext.url);
+                console.log('Downloading Subject PDF from:', subjectContext.url);
                 const pdfRes = await fetch(subjectContext.url);
                 if (pdfRes.ok) {
                     const pdfBlob = await pdfRes.blob();
@@ -80,10 +80,43 @@ Deno.serve(async (req: Request) => {
 
                     systemInstruction += `\n\nUn document PDF (Sujet d'examen ou cours: "${subjectContext.title}") est joint à ce message. Analyse-le pour répondre aux questions de l'étudiant.`;
                 } else {
-                    console.error('Failed to download PDF:', pdfRes.status);
+                    console.error('Failed to download Subject PDF:', pdfRes.status);
                 }
             } catch (e) {
-                console.error('Error processing PDF:', e);
+                console.error('Error processing Subject PDF:', e);
+            }
+        }
+
+        // Traitement des pièces jointes du message utilisateur
+        if (lastMessage.attachments && Array.isArray(lastMessage.attachments)) {
+            for (const attachment of lastMessage.attachments) {
+                if (attachment.url && (attachment.type.startsWith('image/') || attachment.type === 'application/pdf')) {
+                    try {
+                        console.log(`Downloading attachment: ${attachment.name} (${attachment.type})`);
+                        const fileRes = await fetch(attachment.url);
+                        if (fileRes.ok) {
+                            const fileBlob = await fileRes.blob();
+                            const arrayBuffer = await fileBlob.arrayBuffer();
+                            const base64File = btoa(
+                                new Uint8Array(arrayBuffer)
+                                    .reduce((data, byte) => data + String.fromCharCode(byte), '')
+                            );
+
+                            currentMessageParts.push({
+                                inlineData: {
+                                    mimeType: attachment.type,
+                                    data: base64File
+                                }
+                            });
+
+                            console.log(`Added attachment ${attachment.name} to prompt`);
+                        } else {
+                            console.error(`Failed to download attachment ${attachment.name}:`, fileRes.status);
+                        }
+                    } catch (e) {
+                        console.error(`Error processing attachment ${attachment.name}:`, e);
+                    }
+                }
             }
         }
 

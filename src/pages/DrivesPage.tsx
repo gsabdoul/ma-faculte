@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { MagnifyingGlassIcon, FlagIcon } from '@heroicons/react/24/solid';
 import { supabase } from '../supabase';
 import { useUser } from '../context/UserContext';
-import { Modal } from '../components/Modal';
+import { Modal } from '../components/ui/Modal';
 
 interface Drive {
     id: string;

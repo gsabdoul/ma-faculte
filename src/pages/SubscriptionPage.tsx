@@ -2,7 +2,7 @@ import { ArrowLeftIcon, CheckCircleIcon, XCircleIcon, TicketIcon, ClipboardDocum
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useUser } from '../context/UserContext';
-import { ConfirmationModal } from '../components/ConfirmationModal';
+import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 import { supabase } from '../supabase';
 import { useModal } from '../hooks/useModal'; // Importez le nouveau hook
 

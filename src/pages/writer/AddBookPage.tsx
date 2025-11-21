@@ -1,12 +1,15 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeftIcon } from '@heroicons/react/24/outline';
 import { supabase } from '../../supabase';
-import { ConfirmationModal } from '../../components/ConfirmationModal';
-import { SearchableSelect } from '../../components/SearchableSelect'; // Assuming this component exists and is reusable
-import { useUser } from '../../context/UserContext'; // To get the current user's ID for created_by
+import { useUser } from '../../hooks/useUser';
+import { ChevronLeftIcon } from '@heroicons/react/24/outline';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
+import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
 
-type Module = { id: string; name: string };
+interface Module {
+    id: string;
+    name: string;
+}
 
 export function AddBookPage() {
     const navigate = useNavigate();
@@ -34,7 +37,7 @@ export function AddBookPage() {
             try {
                 const { data: modulesData, error: modulesError } = await supabase.from('modules').select('id, nom').order('nom');
                 if (modulesError) throw modulesError;
-                setModules(modulesData.map(m => ({ id: m.id, name: m.nom })));
+                setModules(modulesData.map((m: any) => ({ id: m.id, name: m.nom })));
             } catch (err: any) {
                 setError(err.message);
             } finally {
@@ -159,7 +162,7 @@ export function AddBookPage() {
                         <SearchableSelect
                             options={modules.map(m => ({ id: m.id, name: m.name }))}
                             value={selectedModuleName}
-                            onChange={(option) => {
+                            onChange={(option: any) => {
                                 setSelectedModuleId(option?.id || '');
                                 setSelectedModuleName(option?.name || '');
                             }}

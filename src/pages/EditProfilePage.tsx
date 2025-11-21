@@ -5,7 +5,7 @@ import { useUser } from '../context/UserContext';
 import { supabase } from '../supabase';
 
 // If ConfirmationModal is located elsewhere, update the path accordingly, for example:
-import { ConfirmationModal } from '../components/ConfirmationModal';
+import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 
 // --- Composants et Types ---
 // Composant réutilisable pour les champs de formulaire

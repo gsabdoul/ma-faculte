@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabase';
-import { SearchableSelect } from '../../components/SearchableSelect';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import {
     EyeIcon,
     EyeSlashIcon,
@@ -224,7 +224,7 @@ export function RegisterPage() {
                                 <SearchableSelect
                                     options={universities}
                                     value={formData.universityNom}
-                                    onChange={(option) => {
+                                    onChange={(option: any) => {
                                         setFormData(prev => ({
                                             ...prev,
                                             universityId: option?.id || '',
@@ -244,7 +244,7 @@ export function RegisterPage() {
                                 <SearchableSelect
                                     options={facultes}
                                     value={formData.faculteNom}
-                                    onChange={(option) => setFormData(prev => ({ ...prev, faculteId: option?.id || '', faculteNom: option?.name || '' }))}
+                                    onChange={(option: any) => setFormData(prev => ({ ...prev, faculteId: option?.id || '', faculteNom: option?.name || '' }))}
                                     placeholder={formData.universityId ? "Rechercher une faculté..." : "Sélectionnez d'abord une université"}
                                     disabled={!formData.universityId}
                                 />

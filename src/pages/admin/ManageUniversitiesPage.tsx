@@ -9,7 +9,7 @@ import {
     PlusIcon,
 } from '@heroicons/react/24/outline';
 import { supabase } from '../../supabase';
-import { Modal } from '../../components/Modal';
+import { Modal } from '../../components/ui/Modal';
 
 interface University {
     id: string;

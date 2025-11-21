@@ -2,11 +2,18 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeftIcon } from '@heroicons/react/24/outline';
 import { supabase } from '../../supabase';
-import { SearchableSelect } from '../../components/SearchableSelect';
-import { ConfirmationModal } from '../../components/ConfirmationModal';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
+import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
 
-type Module = { id: string; name: string };
-type University = { id: string; name: string };
+interface Module {
+    id: string;
+    name: string;
+}
+
+interface University {
+    id: string;
+    name: string;
+}
 
 export function EditSubjectPage() {
     const { subjectId } = useParams<{ subjectId: string }>();
@@ -60,8 +67,8 @@ export function EditSubjectPage() {
                 setSelectedUniversityName(subject.universites?.nom || '');
                 setYear(subject.annee ? String(subject.annee) : '');
 
-                setModules(modsRes.data.map(m => ({ id: m.id, name: m.nom })));
-                setUniversities(unisRes.data.map(u => ({ id: u.id, name: u.nom })));
+                setModules(modsRes.data.map((m: { id: any; nom: any; }) => ({ id: m.id, name: m.nom })));
+                setUniversities(unisRes.data.map((u: { id: any; nom: any; }) => ({ id: u.id, name: u.nom })));
 
             } catch (err: any) {
                 setError(err.message);
@@ -161,7 +168,7 @@ export function EditSubjectPage() {
                         <SearchableSelect
                             options={modules}
                             value={selectedModuleName}
-                            onChange={(option) => {
+                            onChange={(option: any) => {
                                 setSelectedModuleId(option?.id || '');
                                 setSelectedModuleName(option?.name || '');
                             }}
@@ -172,7 +179,7 @@ export function EditSubjectPage() {
                         <SearchableSelect
                             options={universities}
                             value={selectedUniversityName}
-                            onChange={(option) => {
+                            onChange={(option: any) => {
                                 setSelectedUniversityId(option?.id || '');
                                 setSelectedUniversityName(option?.name || '');
                             }}
