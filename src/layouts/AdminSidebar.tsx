@@ -11,7 +11,8 @@ import {
     CurrencyDollarIcon,
     XMarkIcon,
     Squares2X2Icon,
-    ArrowUturnLeftIcon
+    ArrowUturnLeftIcon,
+    BellIcon
 } from '@heroicons/react/24/outline';
 
 interface AdminSidebarProps {
@@ -23,7 +24,8 @@ const menuItems = [
     { to: '/admin', text: 'Tableau de bord', icon: ChartBarIcon },
     { to: '/admin/users', text: 'Utilisateurs', icon: UsersIcon },
     { to: '/admin/revenues', text: 'Revenus', icon: CurrencyDollarIcon },
-    { to: '/admin/reports', text: 'Signalements', icon: ExclamationTriangleIcon },
+    { to: '/admin/notifications', text: 'Notifications', icon: BellIcon },
+    { to: 'signalements', text: 'Signalements', icon: ExclamationTriangleIcon },
     { to: '/admin/subjects', text: 'Sujets', icon: DocumentTextIcon },
     { to: '/admin/books', text: 'Livres', icon: BookOpenIcon },
     { to: '/admin/drives', text: 'Drives', icon: FolderIcon },

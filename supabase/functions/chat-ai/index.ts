@@ -1,178 +1,181 @@
 // @ts-ignore
 declare const Deno: any;
 
-const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY');
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
 Deno.serve(async (req: Request) => {
     // Handle CORS preflight requests
     if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders })
+        return new Response('ok', { headers: corsHeaders });
     }
 
     try {
         // 1. Check API Key
-        if (!GEMINI_API_KEY) {
-            throw new Error('Configuration Error: GEMINI_API_KEY is missing in secrets.')
+        if (!OPENROUTER_API_KEY) {
+            throw new Error('Configuration Error: OPENROUTER_API_KEY is missing in secrets.');
         }
 
         // 2. Parse Body
         let body;
         try {
-            body = await req.json()
+            body = await req.json();
         } catch (e) {
-            throw new Error('Invalid JSON body')
+            throw new Error('Invalid JSON body');
         }
 
-        const { messages, userContext, subjectContext } = body
+        const { messages, userContext, subjectContext } = body;
         if (!messages || !Array.isArray(messages)) {
-            throw new Error('Invalid payload: messages array is required')
+            throw new Error('Invalid payload: messages array is required');
         }
 
-        // 3. Format for Gemini
-        let systemInstruction = "Tu es un assistant pédagogique intelligent pour une application universitaire denommée (Ma faculté)."
+        // 3. Build System Prompt with Application Context
+        let systemInstruction = `Tu es un assistant pédagogique intelligent pour l'application "Ma faculté".
+
+## À propos de l'application
+Ma faculté est une plateforme éducative destinée aux étudiants universitaires au Burkina Faso. L'application permet d'accéder à:
+- **Anciens sujets d'examens** organisés par module et université (fichiers PDF)
+- **Livres académiques** par module (fichiers PDF avec couvertures)
+- **Drives partagés** contenant des ressources pédagogiques
+- **Chat IA** pour assistance académique personnalisée
+
+## Structure de l'application
+L'application est organisée autour de :
+- **Universités** : Établissements d'enseignement supérieur (ex: Université Joseph Ki-Zerbo)
+- **Facultés** : Divisions académiques (ex: Médecine, Droit, Sciences)
+- **Niveaux** : Années d'étude (ex: 1ère année, 2ème année, Licence, Master)
+- **Modules** : Matières/cours enseignés (peuvent être gratuits ou premium)
+
+## Fonctionnalités principales
+1. **Page Accueil**: Accès aux anciens sujets par module et université
+2. **Page Drives**: Liens vers Google Drives partagés
+3. **Page Livres**: Bibliothèque de livres académiques par module
+4. **Page Profil**: Informations de l'étudiant, abonnement, équipe
+
+## Ton rôle
+- Aide les étudiants dans leurs révisions et apprentissage
+- Réponds à leurs questions académiques
+- Suggère des ressources pertinentes (sujets, livres, drives) basées sur leur faculté et niveau
+- Reste dans le contexte universitaire burkinabé
+- Adapte tes réponses au niveau d'étude de l'étudiant`;
 
         if (userContext) {
-            systemInstruction += `\n\nContexte de l'étudiant :
-            - Prénom : ${userContext.prenom || 'Inconnu'}
-            - Nom : ${userContext.nom || ''}
-            - Université : ${userContext.universite || 'Non spécifiée'}
-            - Faculté : ${userContext.faculte || 'Non spécifiée'}
-            - Niveau : ${userContext.niveau || 'Non spécifié'}
-            
-            Modules (Cours) suivis : ${userContext.modules && userContext.modules.length > 0 ? userContext.modules.join(', ') : 'Aucun module spécifique identifié.'}
-            
-            Adapte tes réponses en fonction de ce niveau d'étude et de ces modules. Tu peux suggérer des ressources en lien avec ces cours.`
+            systemInstruction += `\n\n## Contexte de l'étudiant actuel
+- **Nom complet**: ${userContext.prenom} ${userContext.nom}
+- **Université**: ${userContext.universite || 'Non spécifiée'}
+- **Faculté**: ${userContext.faculte || 'Non spécifiée'}
+- **Niveau d'étude**: ${userContext.niveau || 'Non spécifié'}`;
+
+            if (userContext.modules && userContext.modules.length > 0) {
+                systemInstruction += `\n- **Modules suivis**: ${userContext.modules.join(', ')}`;
+            }
+
+            systemInstruction += `\n\n**Important**: Adapte tes réponses au niveau d'étude de cet étudiant et suggère des ressources pertinentes disponibles dans l'application.`;
         }
 
-        // Préparer le contenu pour Gemini
-        const lastMessage = messages[messages.length - 1];
-        const history = messages.slice(0, -1).map((msg: any) => ({
-            role: msg.sender === 'user' ? 'user' : 'model',
-            parts: [{ text: msg.text }]
-        }));
-
-        const currentMessageParts: any[] = [{ text: lastMessage.text }];
-
-        // Si un PDF est fourni (contexte sujet), le télécharger et l'ajouter
-        if (subjectContext && subjectContext.url) {
-            try {
-                console.log('Downloading Subject PDF from:', subjectContext.url);
-                const pdfRes = await fetch(subjectContext.url);
-                if (pdfRes.ok) {
-                    const pdfBlob = await pdfRes.blob();
-                    const arrayBuffer = await pdfBlob.arrayBuffer();
-                    const base64Pdf = btoa(
-                        new Uint8Array(arrayBuffer)
-                            .reduce((data, byte) => data + String.fromCharCode(byte), '')
-                    );
-
-                    currentMessageParts.unshift({
-                        inlineData: {
-                            mimeType: "application/pdf",
-                            data: base64Pdf
-                        }
-                    });
-
-                    systemInstruction += `\n\nUn document PDF (Sujet d'examen ou cours: "${subjectContext.title}") est joint à ce message. Analyse-le pour répondre aux questions de l'étudiant.`;
-                } else {
-                    console.error('Failed to download Subject PDF:', pdfRes.status);
-                }
-            } catch (e) {
-                console.error('Error processing Subject PDF:', e);
+        if (subjectContext) {
+            systemInstruction += `\n\nL'étudiant consulte actuellement le document : "${subjectContext.title}".`;
+            if (subjectContext.url) {
+                systemInstruction += ` URL du document : ${subjectContext.url}`;
             }
         }
 
-        // Traitement des pièces jointes du message utilisateur
-        if (lastMessage.attachments && Array.isArray(lastMessage.attachments)) {
-            for (const attachment of lastMessage.attachments) {
-                if (attachment.url && (attachment.type.startsWith('image/') || attachment.type === 'application/pdf')) {
-                    try {
-                        console.log(`Downloading attachment: ${attachment.name} (${attachment.type})`);
-                        const fileRes = await fetch(attachment.url);
-                        if (fileRes.ok) {
-                            const fileBlob = await fileRes.blob();
-                            const arrayBuffer = await fileBlob.arrayBuffer();
-                            const base64File = btoa(
-                                new Uint8Array(arrayBuffer)
-                                    .reduce((data, byte) => data + String.fromCharCode(byte), '')
-                            );
-
-                            currentMessageParts.push({
-                                inlineData: {
-                                    mimeType: attachment.type,
-                                    data: base64File
-                                }
-                            });
-
-                            console.log(`Added attachment ${attachment.name} to prompt`);
-                        } else {
-                            console.error(`Failed to download attachment ${attachment.name}:`, fileRes.status);
-                        }
-                    } catch (e) {
-                        console.error(`Error processing attachment ${attachment.name}:`, e);
-                    }
-                }
-            }
-        }
-
-        const contents = [
-            ...history,
-            {
-                role: 'user',
-                parts: currentMessageParts
-            }
+        // 4. Format Messages for OpenRouter (OpenAI compatible)
+        const openRouterMessages = [
+            { role: "system", content: systemInstruction },
+            ...messages.map((msg: any) => ({
+                role: msg.sender === 'user' ? 'user' : 'assistant',
+                content: msg.text
+            }))
         ];
 
-        // 4. Call Gemini API
-        const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    contents: contents,
-                    systemInstruction: {
-                        parts: [{ text: systemInstruction }]
-                    }
-                }),
-            }
-        )
+        // 5. Call OpenRouter API with streaming enabled
+        const response = await fetch(OPENROUTER_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://ma-faculte.app',
+                'X-Title': 'Ma Faculte',
+            },
+            body: JSON.stringify({
+                model: "mistralai/mistral-7b-instruct:free",
+                messages: openRouterMessages,
+                stream: true, // Enable streaming
+            }),
+        });
 
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}))
-            console.error('Gemini API Error:', errorData)
-            throw new Error(`Gemini API Error (${response.status}): ${errorData.error?.message || response.statusText}`)
+            const errorText = await response.text();
+            console.error('OpenRouter API Error:', response.status, errorText);
+            throw new Error(`OpenRouter API Error: ${response.status} - ${errorText}`);
         }
 
-        const data = await response.json()
+        // 6. Stream the response back to the client
+        const stream = new ReadableStream({
+            async start(controller) {
+                const reader = response.body?.getReader();
+                const decoder = new TextDecoder();
 
-        if (!data.candidates || data.candidates.length === 0) {
-            console.error('No candidates in response:', data)
-            throw new Error('No response generated by Gemini.')
-        }
+                if (!reader) {
+                    controller.close();
+                    return;
+                }
 
-        const aiResponse = data.candidates[0].content.parts[0].text
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
 
-        return new Response(
-            JSON.stringify({ text: aiResponse }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split('\n');
+
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = line.slice(6);
+                                if (data === '[DONE]') continue;
+
+                                try {
+                                    const parsed = JSON.parse(data);
+                                    const content = parsed.choices?.[0]?.delta?.content;
+
+                                    if (content) {
+                                        // Send SSE formatted data
+                                        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ text: content })}\n\n`));
+                                    }
+                                } catch (e) {
+                                    // Skip invalid JSON
+                                }
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Streaming error:', error);
+                } finally {
+                    controller.close();
+                }
+            }
+        });
+
+        return new Response(stream, {
+            headers: {
+                ...corsHeaders,
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+            },
+        });
 
     } catch (error: any) {
-        console.error('Edge Function Error:', error)
-        return new Response(
-            JSON.stringify({ error: error.message || 'Internal Server Error' }),
-            {
-                status: 200, // Return 200 to avoid client-side exception masking the error message
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            }
-        )
+        console.error('Edge Function Error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
     }
-})
+});

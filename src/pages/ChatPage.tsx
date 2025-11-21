@@ -5,6 +5,9 @@ import { PaperAirplaneIcon, PaperClipIcon, Bars3Icon, XMarkIcon, PlusIcon, Penci
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+// URL of the Supabase Edge Function handling AI chat
+const EDGE_URL = 'https://qbrpefuxlzgtrntxdtwk.supabase.co/functions/v1/chat-ai';
+
 export function ChatPage() {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<{ id: number; text: string; sender: 'user' | 'ai'; attachments?: any[] }[]>([]);
@@ -238,45 +241,137 @@ export function ChatPage() {
         }
 
         // 1. Sauvegarder le message utilisateur avec les pièces jointes
-        await supabase.from('messages').insert({
+        const { data: savedUserMessage, error: saveError } = await supabase.from('messages').insert({
           conversation_id: conversationId,
           user_id: userId,
           content: userText || '📎 Fichiers joints',
           is_ai: false,
           attachments: uploadedAttachments
-        });
+        }).select().single();
 
-        // 2. Appeler l'IA
-        const { data, error } = await supabase.functions.invoke('chat-ai', {
-          body: {
-            messages: [...messages, {
-              text: userText || '📎 Fichiers joints',
-              sender: 'user',
-              attachments: uploadedAttachments // Envoyer les pièces jointes à l'IA
-            }],
-            userContext: userContext, // Envoyer le contexte utilisateur
-            subjectContext: subjectContext // Envoyer le contexte du sujet (PDF)
+        if (saveError) throw saveError;
+
+        // 2. Construire la requête pour l'IA AVANT de mettre à jour le state local
+        // (pour éviter les problèmes de closure avec l'ancien state)
+        const messagesForAI = [
+          ...messages.map(msg => ({
+            text: msg.text,
+            sender: msg.sender,
+            attachments: msg.attachments || []
+          })),
+          {
+            text: savedUserMessage.content,
+            sender: 'user' as const,
+            attachments: savedUserMessage.attachments || []
           }
+        ];
+
+        // 3. Mettre à jour le state local (remplacer le message temporaire par celui de la DB)
+        setMessages((prev) => prev.map(msg =>
+          msg.id === tempId ? {
+            id: savedUserMessage.id,
+            text: savedUserMessage.content,
+            sender: 'user' as const,
+            attachments: savedUserMessage.attachments || []
+          } : msg
+        ));
+
+        // 4. Appeler l'IA
+        console.log('Sending request to Edge Function:', EDGE_URL);
+
+        const requestBody = {
+          messages: messagesForAI,
+          userContext,
+          subjectContext,
+        };
+        console.log('Request Payload:', JSON.stringify(requestBody, null, 2));
+
+        const response = await fetch(EDGE_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify(requestBody),
         });
 
-        if (error) throw error;
-        if (data && data.error) throw new Error(`IA Error: ${data.error}`);
+        console.log('Response Status:', response.status);
 
-        if (data && data.text) {
-          const aiText = data.text;
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.log('Error Response Text:', errorText);
+          throw new Error(`API Error ${response.status}: ${errorText}`);
+        }
 
-          // 3. Sauvegarder la réponse de l'IA
-          await supabase.from('messages').insert({
-            conversation_id: conversationId,
-            user_id: userId,
-            content: aiText,
-            is_ai: true
-          });
+        // Handle streaming response
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
 
-          setMessages((prev) => [
-            ...prev,
-            { id: Date.now() + 1, text: aiText, sender: 'ai' },
-          ]);
+        if (!reader) {
+          throw new Error('No response body available');
+        }
+
+        let aiText = '';
+        const tempAiId = Date.now() + 2;
+
+        // Add empty AI message that will be updated progressively
+        setMessages((prev) => [
+          ...prev,
+          { id: tempAiId, text: '', sender: 'ai' },
+        ]);
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6);
+                try {
+                  const parsed = JSON.parse(data);
+                  if (parsed.text) {
+                    aiText += parsed.text;
+                    // Update the AI message progressively
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === tempAiId ? { ...msg, text: aiText } : msg
+                      )
+                    );
+                  }
+                } catch (e) {
+                  // Skip invalid JSON
+                }
+              }
+            }
+          }
+
+          // Save complete AI response to database
+          if (aiText) {
+            const { data: savedAiMessage, error: aiSaveError } = await supabase.from('messages').insert({
+              conversation_id: conversationId,
+              user_id: userId,
+              content: aiText,
+              is_ai: true
+            }).select().single();
+
+            if (aiSaveError) throw aiSaveError;
+
+            // Replace temp AI message with DB message
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === tempAiId ? { id: savedAiMessage.id, text: aiText, sender: 'ai' } : msg
+              )
+            );
+          } else {
+            throw new Error('Aucune réponse reçue de l\'IA. Veuillez réessayer.');
+          }
+        } catch (streamError: any) {
+          console.error('Streaming error:', streamError);
+          throw streamError;
         }
       } catch (error: any) {
         console.error('Error in chat flow:', error);
@@ -312,14 +407,33 @@ export function ChatPage() {
     e.stopPropagation();
     if (!confirm('Voulez-vous vraiment supprimer cette conversation ?')) return;
 
-    const { error } = await supabase.from('conversations').delete().eq('id', id);
-    if (error) {
-      console.error('Error deleting conversation:', error);
-    } else {
+    try {
+      // 1. D'abord supprimer tous les messages de la conversation
+      const { error: messagesError } = await supabase
+        .from('messages')
+        .delete()
+        .eq('conversation_id', id);
+
+      if (messagesError) throw messagesError;
+
+      // 2. Ensuite supprimer la conversation
+      const { error: conversationError } = await supabase
+        .from('conversations')
+        .delete()
+        .eq('id', id);
+
+      if (conversationError) throw conversationError;
+
+      // 3. Mettre à jour l'état local
       setConversations(prev => prev.filter(c => c.id !== id));
+
+      // 4. Si c'était la conversation active, créer une nouvelle
       if (currentConversationId === id) {
         handleNewChat();
       }
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+      alert('Erreur lors de la suppression de la conversation.');
     }
   };
 

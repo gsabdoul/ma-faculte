@@ -1,9 +1,9 @@
 import { createHashRouter, Navigate } from "react-router-dom";
 import { MainLayout } from "./layouts/MainLayout";
-import { HomePage } from "./pages/HomePage"; // <- Chemin correct
-import { DrivesPage } from "./pages/DrivesPage"; // <- Chemin correct
-import { BooksPage } from "./pages/BooksPage"; // <- Chemin correct
-import { ProfilePage } from "./pages/ProfilePage"; // <- Chemin correct
+import { HomePage } from "./pages/HomePage";
+import { DrivesPage } from "./pages/DrivesPage";
+import { BooksPage } from "./pages/BooksPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { UniversitePage } from "./pages/UniversitePage";
 import { SujetPage } from "./pages/SujetPage";
 import { SujetViewPage } from "./pages/SujetViewPage";
@@ -19,8 +19,6 @@ import { ManageSubjectsPage } from './pages/admin/ManageSubjectsPage';
 import { ManageBooksPage } from './pages/admin/ManageBooksPage';
 import { ManageDrivesPage } from './pages/admin/ManageDrivesPage';
 import { ManageModulesPage } from './pages/admin/ManageModulesPage';
-import { ManageReportsPage } from './pages/admin/ManageReportsPage';
-import { ManageFacultiesPage } from './pages/admin/ManageFacultiesPage';
 import { ManageRevenuesPage } from './pages/admin/ManageRevenuesPage';
 import { ManageUniversitiesPage } from './pages/admin/ManageUniversitiesPage';
 import { WelcomePage } from './pages/WelcomePage';
@@ -36,6 +34,11 @@ import { EditDrivePage } from './pages/writer/EditDrivePage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ChatPage } from './pages/ChatPage';
+import { TestOpenRouterPage } from './pages/TestOpenRouterPage';
+import { ManageNotifications } from './pages/admin/ManageNotifications';
+import { ManageFacultiesPage } from './pages/admin/ManageFacultiesPage';
+import { ManageSignalementsPage } from './pages/admin/ManageSignalementsPage';
+
 
 export const router = createHashRouter([
     {
@@ -57,6 +60,7 @@ export const router = createHashRouter([
                     { path: "home", element: <HomePage /> },
                     { path: "drives", element: <DrivesPage /> },
                     { path: "chat", element: <ChatPage /> },
+                    { path: "test-openrouter", element: <TestOpenRouterPage /> },
                     { path: "livres", element: <BooksPage /> },
                     { path: "profil", element: <ProfilePage /> }, // Note: les sous-routes de profil sont en dehors du MainLayout
                     { path: "modules/:moduleId/universites", element: <UniversitePage /> },
@@ -109,10 +113,11 @@ export const router = createHashRouter([
                     { path: "books", element: <ManageBooksPage /> },
                     { path: "drives", element: <ManageDrivesPage /> },
                     { path: "modules", element: <ManageModulesPage /> },
-                    { path: "reports", element: <ManageReportsPage /> },
-                    { path: "faculties", element: <ManageFacultiesPage /> },
                     { path: "revenues", element: <ManageRevenuesPage /> },
                     { path: "universities", element: <ManageUniversitiesPage /> },
+                    { path: "notifications", element: <ManageNotifications /> },
+                    { path: "signalements", element: <ManageSignalementsPage /> },
+                    { path: "faculties", element: <ManageFacultiesPage /> },
                 ]
             }
         ]

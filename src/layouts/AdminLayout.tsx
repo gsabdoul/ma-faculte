@@ -14,6 +14,8 @@ import {
     BuildingLibraryIcon as BuildingLibrarySolid,
     BuildingOffice2Icon as BuildingOffice2Solid,
     CurrencyDollarIcon as CurrencyDollarSolid,
+    BellIcon as BellSolid,
+    ExclamationTriangleIcon as ExclamationTriangleSolid,
 } from '@heroicons/react/24/solid';
 
 const adminNavItems = [
@@ -26,6 +28,8 @@ const adminNavItems = [
     { name: 'Gérer les facultés', to: '/admin/faculties', icon: BuildingLibrarySolid },
     { name: 'Gérer les universités', to: '/admin/universities', icon: BuildingOffice2Solid },
     { name: 'Revenus', to: '/admin/revenues', icon: CurrencyDollarSolid },
+    { name: 'Notifications', to: '/admin/notifications', icon: BellSolid },
+    { name: 'Signalements', to: '/admin/signalements', icon: ExclamationTriangleSolid },
 ];
 
 export function AdminLayout() {

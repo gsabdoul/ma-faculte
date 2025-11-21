@@ -1,4 +1,6 @@
+import React from 'react';
 import { Modal } from './Modal';
+import { ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 
 interface ConfirmationModalProps {
     isOpen: boolean;
@@ -15,8 +17,8 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     isOpen,
     onClose,
     onConfirm,
-    title,
-    message,
+    title = "",
+    message = "",
     confirmText = "Confirmer",
     cancelText = "Annuler",
     isDestructive = false,
@@ -24,7 +26,9 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     if (!isOpen) return null;
 
     const handleConfirm = () => {
-        onConfirm?.();
+        if (onConfirm) {
+            onConfirm();
+        }
         onClose();
     };
 
@@ -32,19 +36,21 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
         ? "bg-red-600 hover:bg-red-700"
         : "bg-blue-600 hover:bg-blue-700";
 
+    const Icon = isDestructive ? ExclamationTriangleIcon : InformationCircleIcon;
+    const iconColor = isDestructive ? "text-red-500" : "text-blue-500";
+
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={title ?? ''}>
-            <div className="space-y-4">
-                <p className="text-gray-600">{message ?? ''}</p>
+        <Modal isOpen={isOpen} onClose={onClose} title={title}>
+            <div className="flex items-start space-x-4">
+                <Icon className={`h-8 w-8 flex-shrink-0 ${iconColor}`} />
+                <p className="text-gray-600 mt-1">{message}</p>
             </div>
             <div className="mt-6 flex justify-end space-x-3">
-                {onConfirm && (
-                    <button type="button" onClick={onClose} className="bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300">
-                        {cancelText}
-                    </button>
-                )}
-                <button type="button" onClick={handleConfirm} className={`text-white px-4 py-2 rounded-md ${onConfirm ? confirmButtonClass : 'bg-blue-600 hover:bg-blue-700'}`}>
-                    {onConfirm ? confirmText : "OK"}
+                <button type="button" onClick={onClose} className="bg-gray-200 text-gray-800 font-bold px-4 py-2 rounded-lg hover:bg-gray-300">
+                    {cancelText}
+                </button>
+                <button type="button" onClick={handleConfirm} className={`text-white font-bold px-4 py-2 rounded-lg ${confirmButtonClass}`}>
+                    {confirmText}
                 </button>
             </div>
         </Modal>
