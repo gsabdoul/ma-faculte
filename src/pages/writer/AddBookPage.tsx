@@ -13,14 +13,12 @@ interface Module {
 
 export function AddBookPage() {
     const navigate = useNavigate();
-    const { user } = useUser(); // Get current user for created_by
+    const { user } = useUser();
     const [title, setTitle] = useState('');
-    const [author, setAuthor] = useState('');
     const [selectedModuleId, setSelectedModuleId] = useState('');
     const [selectedModuleName, setSelectedModuleName] = useState('');
     const [coverFile, setCoverFile] = useState<File | null>(null);
-    const [pdfFile, setPdfFile] = useState<File | null>(null);
-    const [numPages, setNumPages] = useState<number | null>(null);
+    const [fileUrl, setFileUrl] = useState('');
     const [modules, setModules] = useState<Module[]>([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
@@ -53,8 +51,8 @@ export function AddBookPage() {
             setError("Vous devez être connecté pour ajouter un livre.");
             return;
         }
-        if (!title || !selectedModuleId || !pdfFile) {
-            setError("Veuillez remplir le titre, sélectionner un module et un fichier PDF.");
+        if (!title || !selectedModuleId || !fileUrl) {
+            setError("Veuillez remplir le titre, sélectionner un module et saisir l'URL du fichier.");
             return;
         }
 
@@ -71,22 +69,13 @@ export function AddBookPage() {
                 couverture_url = supabase.storage.from('livres').getPublicUrl(filePath).data.publicUrl;
             }
 
-            // 2. Upload du fichier PDF
-            const pdfFilePath = `public/pdfs/${Date.now()}_${pdfFile.name.replace(/\s/g, '_')}`;
-            const { error: pdfUploadError } = await supabase.storage.from('livres').upload(pdfFilePath, pdfFile);
-            if (pdfUploadError) throw pdfUploadError;
-            const pdfPublicUrl = supabase.storage.from('livres').getPublicUrl(pdfFilePath).data.publicUrl;
-
-            // 3. Insérer le livre dans la base de données
+            // 2. Insérer le livre dans la base de données
             const { error: insertError } = await supabase.from('livres').insert({
                 titre: title,
-                auteur: author || null,
                 module_id: selectedModuleId,
                 couverture_url: couverture_url,
-                fichier_url: pdfPublicUrl,
-                taille_fichier: pdfFile.size,
-                created_by: user.id, // Ajout de l'ID de l'utilisateur
-                nombre_pages: numPages, // Assuming numPages is set elsewhere or removed if not needed
+                fichier_url: fileUrl,
+                created_by: user.id,
             });
 
             if (insertError) throw insertError;
@@ -100,12 +89,10 @@ export function AddBookPage() {
 
             // Reset form
             setTitle('');
-            setAuthor('');
             setSelectedModuleId('');
             setSelectedModuleName('');
             setCoverFile(null);
-            setPdfFile(null);
-            setNumPages(null);
+            setFileUrl('');
 
         } catch (err: any) {
             setError(err.message || "Une erreur est survenue lors de l'ajout du livre.");
@@ -147,17 +134,6 @@ export function AddBookPage() {
                         />
                     </div>
                     <div>
-                        <label htmlFor="author" className="block text-sm font-medium text-gray-700">Auteur</label>
-                        <input
-                            type="text"
-                            name="author"
-                            id="author"
-                            value={author}
-                            onChange={(e) => setAuthor(e.target.value)}
-                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                        />
-                    </div>
-                    <div>
                         <label htmlFor="moduleId" className="block text-sm font-medium text-gray-700">Module</label>
                         <SearchableSelect
                             options={modules.map(m => ({ id: m.id, name: m.name }))}
@@ -181,22 +157,22 @@ export function AddBookPage() {
                         />
                     </div>
                     <div>
-                        <label htmlFor="pdfFile" className="block text-sm font-medium text-gray-700">Fichier PDF</label>
+                        <label htmlFor="fileUrl" className="block text-sm font-medium text-gray-700">URL du fichier (PDF/Drive)</label>
                         <input
-                            type="file"
-                            name="pdfFile"
-                            id="pdfFile"
-                            accept="application/pdf"
-                            onChange={(e) => setPdfFile(e.target.files ? e.target.files[0] : null)}
+                            type="text"
+                            name="fileUrl"
+                            id="fileUrl"
+                            value={fileUrl}
+                            onChange={(e) => setFileUrl(e.target.value)}
                             required
-                            className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                            placeholder="https://..."
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                         />
                     </div>
-                    {/* You might want to add an input for numPages if you can extract it from the PDF */}
                     <div className="pt-4">
                         <button
                             type="submit"
-                            disabled={submitting || !title || !selectedModuleId || !pdfFile}
+                            disabled={submitting || !title || !selectedModuleId || !fileUrl}
                             className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:bg-blue-300 disabled:cursor-not-allowed"
                         >
                             {submitting ? 'Ajout en cours...' : 'Ajouter le Livre'}

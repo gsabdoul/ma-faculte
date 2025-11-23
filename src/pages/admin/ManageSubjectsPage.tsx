@@ -59,16 +59,18 @@ export function ManageSubjectsPage() {
     const [allSubjects, setAllSubjects] = useState<SubjectInfo[]>([]);
     const [modules, setModules] = useState<Module[]>([]);
     const [universities, setUniversities] = useState<University[]>([]);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-    // Load modules, universites and sujets from Supabase on mount
+    // Load modules, universites, sujets and current user from Supabase on mount
     useEffect(() => {
         let cancelled = false;
         const load = async () => {
             try {
-                const [modsRes, unisRes, sujetsRes] = await Promise.all([
+                const [modsRes, unisRes, sujetsRes, userRes] = await Promise.all([
                     supabase.from('modules').select('id, nom'),
                     supabase.from('universites').select('id, nom'),
-                    supabase.from('sujets').select('id, titre, fichier_url, module_id, universite_id, annee, correction'),
+                    supabase.from('sujets').select('id, titre, fichier_url, module_id, universite_id, annee, correction, created_by'),
+                    supabase.auth.getUser()
                 ]);
 
                 if (cancelled) return;
@@ -105,6 +107,9 @@ export function ManageSubjectsPage() {
                 setModules(mods);
                 setUniversities(unis);
                 setAllSubjects(sujets);
+                if (userRes.data.user) {
+                    setCurrentUserId(userRes.data.user.id);
+                }
             } catch (_err) {
                 // intentionally silent; UI could surface this in future
             }
@@ -264,6 +269,7 @@ export function ManageSubjectsPage() {
                         fichier_url: publicUrl,
                         correction: activeSubject.correction ? String(activeSubject.correction) : null,
                         annee: activeSubject.year !== '' && activeSubject.year !== null ? Number(activeSubject.year) : null,
+                        created_by: currentUserId
                     })
                     .select()
                     .single();

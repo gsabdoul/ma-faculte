@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../supabase';
 import { toast } from 'react-toastify';
 import { Modal } from '../../components/ui/Modal';
@@ -36,9 +36,10 @@ export function ManageNotifications() {
     const [title, setTitle] = useState('');
     const [message, setMessage] = useState('');
     const [target, setTarget] = useState<'all' | 'specific' | 'faculty'>('all');
-    
-    const [faculties, setFaculties] = useState<Faculty[]>([]);
+
     const [selectedFaculty, setSelectedFaculty] = useState<string>('');
+    const [facultySearchQuery, setFacultySearchQuery] = useState('');
+    const [facultySearchResults, setFacultySearchResults] = useState<Faculty[]>([]);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<Profile[]>([]);
@@ -75,32 +76,48 @@ export function ManageNotifications() {
         }
     };
 
-    const fetchFaculties = async () => {
-        const { data, error } = await supabase.from('facultes').select('id, nom');
-        if (error) {
-            console.error("Erreur lors de la récupération des facultés:", error);
-        } else {
-            setFaculties(data || []);
-        }
-    };
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const debouncedSearch = useCallback(debounce(async (query: string) => {
-        if (query.length < 3) {
+        const trimmedQuery = query.trim();
+        if (trimmedQuery.length < 2) {
             setSearchResults([]);
             return;
         }
+
         const { data, error } = await supabase
             .from('profiles')
-            .select('id, nom, prenom, users(email)')
-            .or(`nom.ilike.%${query}%,prenom.ilike.%${query}%,users.email.ilike.%${query}%`)
+            .select('id, nom, prenom')
+            .or(`nom.ilike.%${trimmedQuery}%,prenom.ilike.%${trimmedQuery}%`)
             .limit(5);
 
         if (error) {
             console.error("Erreur de recherche d'utilisateur:", error);
+            setSearchResults([]);
         } else {
-            const formattedData = data.map((p: any) => ({ ...p, email: p.users?.email }));
+            const formattedData = data.map((p: any) => ({ ...p, email: 'Email masqué' }));
             setSearchResults(formattedData);
+        }
+    }, 500), []);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const debouncedFacultySearch = useCallback(debounce(async (query: string) => {
+        const trimmedQuery = query.trim();
+        if (trimmedQuery.length < 2) {
+            setFacultySearchResults([]);
+            return;
+        }
+
+        const { data, error } = await supabase
+            .from('facultes')
+            .select('id, nom')
+            .ilike('nom', `%${trimmedQuery}%`)
+            .limit(5);
+
+        if (error) {
+            console.error("Erreur de recherche de faculté:", error);
+            setFacultySearchResults([]);
+        } else {
+            setFacultySearchResults(data || []);
         }
     }, 500), []);
 
@@ -109,8 +126,11 @@ export function ManageNotifications() {
     }, [searchQuery, debouncedSearch]);
 
     useEffect(() => {
+        debouncedFacultySearch(facultySearchQuery);
+    }, [facultySearchQuery, debouncedFacultySearch]);
+
+    useEffect(() => {
         fetchNotifications();
-        fetchFaculties();
     }, []);
 
     const handleDelete = async (id: string) => {
@@ -125,8 +145,12 @@ export function ManageNotifications() {
         }
     };
 
-    const handleCreate = async (e: FormEvent) => {
-        e.preventDefault();
+    const handleCreate = async () => {
+        if (!title || !message) {
+            toast.error("Veuillez remplir le titre et le message.");
+            return;
+        }
+
         setIsSubmitting(true);
 
         try {
@@ -143,10 +167,10 @@ export function ManageNotifications() {
                 userIds = data.map(p => p.id);
             }
 
-            let notificationsToInsert: { titre: string; message: string; user_id?: string }[] = [];
+            let notificationsToInsert: { titre: string; message: string; user_id?: string | null }[] = [];
 
             if (target === 'all') {
-                notificationsToInsert.push({ titre: title, message: message }); // user_id est null pour tous
+                notificationsToInsert.push({ titre: title, message: message, user_id: null });
             } else {
                 if (userIds.length === 0) {
                     toast.warn('Aucun destinataire trouvé pour cette sélection.');
@@ -160,21 +184,25 @@ export function ManageNotifications() {
                 }));
             }
 
-            const { error } = await supabase.from('notifications').insert(notificationsToInsert);
+            const { error: insertError } = await supabase
+                .from('notifications')
+                .insert(notificationsToInsert);
 
-            if (error) throw error;
+            if (insertError) throw insertError;
 
-            toast.success(`Notification envoyée avec succès à ${target === 'all' ? 'tous les utilisateurs' : `${notificationsToInsert.length} utilisateur(s)`}.`);
+            toast.success(`Notification envoyée avec succès !`);
+
             // Reset form
             setTitle('');
             setMessage('');
             setSelectedUser(null);
             setSearchQuery('');
             setSelectedFaculty('');
+            setFacultySearchQuery('');
             setShowForm(false);
             fetchNotifications();
         } catch (err: any) {
-            toast.error(`Erreur lors de la création: ${err.message}`);
+            toast.error(`Erreur : ${err.message}`);
         } finally {
             setIsSubmitting(false);
         }
@@ -193,14 +221,14 @@ export function ManageNotifications() {
             </div>
 
             <Modal isOpen={showForm} onClose={() => setShowForm(false)} title="Créer une nouvelle notification">
-                <form onSubmit={handleCreate} className="space-y-4">
+                <div className="space-y-4">
                     <div>
                         <label htmlFor="title" className="block text-gray-700 font-semibold mb-2">Titre</label>
-                        <input type="text" id="title" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                        <input type="text" id="title" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <div>
                         <label htmlFor="message" className="block text-gray-700 font-semibold mb-2">Message</label>
-                        <textarea id="message" value={message} onChange={(e) => setMessage(e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" rows={4} required />
+                        <textarea id="message" value={message} onChange={(e) => setMessage(e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" rows={4} />
                     </div>
                     <div>
                         <label className="block text-gray-700 font-semibold mb-2">Destinataire</label>
@@ -219,7 +247,7 @@ export function ManageNotifications() {
                                 id="userSearch"
                                 value={searchQuery}
                                 onChange={(e) => { setSearchQuery(e.target.value); setSelectedUser(null); }}
-                                placeholder="Taper un nom, prénom ou email..."
+                                placeholder="Taper un nom ou prénom..."
                                 className="w-full px-3 py-2 border rounded-lg"
                                 autoComplete="off"
                             />
@@ -227,7 +255,7 @@ export function ManageNotifications() {
                                 <ul className="absolute z-10 w-full bg-white border rounded-lg mt-1 max-h-60 overflow-y-auto">
                                     {searchResults.map(user => (
                                         <li key={user.id} onClick={() => { setSelectedUser(user); setSearchQuery(`${user.prenom} ${user.nom}`); setSearchResults([]); }} className="p-2 hover:bg-gray-100 cursor-pointer">
-                                            {user.prenom} {user.nom} ({user.email})
+                                            {user.prenom} {user.nom} <span className="text-xs text-gray-500">(ID: {user.id})</span>
                                         </li>
                                     ))}
                                 </ul>
@@ -236,14 +264,26 @@ export function ManageNotifications() {
                     )}
 
                     {target === 'faculty' && (
-                        <div>
-                            <label htmlFor="facultySelect" className="block text-gray-700 font-semibold mb-2">Choisir une faculté</label>
-                            <select id="facultySelect" value={selectedFaculty} onChange={(e) => setSelectedFaculty(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white" required>
-                                <option value="" disabled>Sélectionner...</option>
-                                {faculties.map(fac => (
-                                    <option key={fac.id} value={fac.id}>{fac.nom}</option>
-                                ))}
-                            </select>
+                        <div className="relative">
+                            <label htmlFor="facultySearch" className="block text-gray-700 font-semibold mb-2">Rechercher une faculté</label>
+                            <input
+                                type="text"
+                                id="facultySearch"
+                                value={facultySearchQuery}
+                                onChange={(e) => { setFacultySearchQuery(e.target.value); setSelectedFaculty(''); }}
+                                placeholder="Taper le nom d'une faculté..."
+                                className="w-full px-3 py-2 border rounded-lg"
+                                autoComplete="off"
+                            />
+                            {facultySearchResults.length > 0 && (
+                                <ul className="absolute z-10 w-full bg-white border rounded-lg mt-1 max-h-60 overflow-y-auto">
+                                    {facultySearchResults.map(fac => (
+                                        <li key={fac.id} onClick={() => { setSelectedFaculty(fac.id); setFacultySearchQuery(fac.nom); setFacultySearchResults([]); }} className="p-2 hover:bg-gray-100 cursor-pointer">
+                                            {fac.nom}
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
                         </div>
                     )}
 
@@ -251,11 +291,11 @@ export function ManageNotifications() {
                         <button type="button" onClick={() => setShowForm(false)} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">
                             Annuler
                         </button>
-                        <button type="submit" disabled={isSubmitting} className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg disabled:bg-gray-400">
+                        <button type="button" onClick={handleCreate} disabled={isSubmitting} className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg disabled:bg-gray-400">
                             {isSubmitting ? 'Envoi en cours...' : 'Envoyer'}
                         </button>
                     </div>
-                </form>
+                </div>
             </Modal>
 
             <div className="bg-white p-6 rounded-xl shadow-md">

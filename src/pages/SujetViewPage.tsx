@@ -31,16 +31,39 @@ export function SujetViewPage() {
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [userContext, setUserContext] = useState<any>(null);
     const [isChatFullscreen, setIsChatFullscreen] = useState(false);
+    const [chatPanelWidth, setChatPanelWidth] = useState(40); // Largeur en pourcentage
+
+    const [isResizingChat, setIsResizingChat] = useState(false);
+    const [pdfTextContent, setPdfTextContent] = useState<string | null>(null);
+    const [isExtractingText, setIsExtractingText] = useState(false);
+
+    // Floating button state - sticky to right edge
+    const [buttonPosition, setButtonPosition] = useState({ y: window.innerHeight / 2 });
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragOffset, setDragOffset] = useState({ y: 0 });
+    const [showTooltip, setShowTooltip] = useState(true);
 
     useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+
         const updateWidth = () => {
-            const el = containerRef.current;
-            if (!el) return;
             setContainerWidth(el.clientWidth);
         };
+
+        // Initial width
         updateWidth();
-        window.addEventListener('resize', updateWidth);
-        return () => window.removeEventListener('resize', updateWidth);
+
+        // Use ResizeObserver to detect size changes (window resize OR layout changes like chat opening)
+        const observer = new ResizeObserver(() => {
+            updateWidth();
+        });
+
+        observer.observe(el);
+
+        return () => {
+            observer.disconnect();
+        };
     }, []);
 
     // Charger le contexte utilisateur
@@ -81,6 +104,7 @@ export function SujetViewPage() {
 
                 if (profile) {
                     setUserContext({
+                        id: uid,
                         nom: profile.nom,
                         prenom: profile.prenom,
                         universite: (profile.universites as any)?.nom,
@@ -93,6 +117,61 @@ export function SujetViewPage() {
         };
 
         loadUserContext();
+    }, []);
+
+    // Extract PDF text for chat context
+    const extractPdfText = async (pdfUrl: string, maxPages = 10): Promise<string> => {
+        try {
+            const loadingTask = pdfjs.getDocument(pdfUrl);
+            const pdf = await loadingTask.promise;
+            const numPages = Math.min(pdf.numPages, maxPages);
+            let fullText = '';
+
+            for (let i = 1; i <= numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map((item: any) => item.str).join(' ');
+                fullText += `--- Page ${i} ---\n${pageText}\n\n`;
+            }
+
+            return fullText;
+        } catch (error) {
+            console.error('Error extracting PDF text:', error);
+            return '';
+        }
+    };
+
+    // Extract PDF text when chat opens
+    useEffect(() => {
+        if (isChatOpen && pdfSource && !pdfTextContent && !isExtractingText) {
+            setIsExtractingText(true);
+            extractPdfText(pdfSource)
+                .then(text => {
+                    setPdfTextContent(text);
+                    setIsExtractingText(false);
+                })
+                .catch(err => {
+                    console.error('Failed to extract PDF text:', err);
+                    setIsExtractingText(false);
+                });
+        }
+    }, [isChatOpen, pdfSource, pdfTextContent, isExtractingText]);
+
+    // Cacher le menu de navigation du bas sur cette page
+    useEffect(() => {
+        const bottomNav = document.querySelector('nav[class*="bottom"]') ||
+            document.querySelector('[class*="BottomNav"]') ||
+            document.querySelector('nav.fixed.bottom-0');
+
+        if (bottomNav) {
+            (bottomNav as HTMLElement).style.display = 'none';
+        }
+
+        return () => {
+            if (bottomNav) {
+                (bottomNav as HTMLElement).style.display = '';
+            }
+        };
     }, []);
 
     const handleCorrectionClick = () => {
@@ -191,6 +270,43 @@ export function SujetViewPage() {
         setIsChatFullscreen(false);
     };
 
+    const handleMouseDown = (e: React.MouseEvent) => {
+        setIsDragging(true);
+        setDragOffset({
+            y: e.clientY - buttonPosition.y
+        });
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+        if (isDragging) {
+            const newY = Math.max(60, Math.min(window.innerHeight - 120, e.clientY - dragOffset.y));
+            setButtonPosition({ y: newY });
+        }
+    };
+
+    const handleMouseUp = () => {
+        setIsDragging(false);
+    };
+
+    useEffect(() => {
+        if (isDragging) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+            return () => {
+                window.removeEventListener('mousemove', handleMouseMove);
+                window.removeEventListener('mouseup', handleMouseUp);
+            };
+        }
+    }, [isDragging, dragOffset]);
+
+    // Auto-hide tooltip after 5 seconds
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setShowTooltip(false);
+        }, 5000);
+        return () => clearTimeout(timer);
+    }, []);
+
     if (loading) {
         return <div className="p-4 text-center text-gray-600">Chargement du sujet...</div>;
     }
@@ -204,8 +320,9 @@ export function SujetViewPage() {
     }
 
     return (
-        <div className="flex flex-col h-screen bg-gray-200">
-            <header className="bg-white p-4 shadow-md z-20 flex-shrink-0">
+        <div className="fixed inset-0 z-50 flex flex-col bg-gray-200 overflow-hidden">
+            {/* Header with title and controls - Fixed */}
+            <header className="bg-white p-4 shadow-md z-50 fixed top-0 left-0 right-0">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center min-w-0">
                         <button onClick={() => navigate(-1)} className="p-2 mr-2 rounded-full hover:bg-gray-100">
@@ -214,16 +331,6 @@ export function SujetViewPage() {
                         <h1 className="text-lg font-bold text-gray-800 truncate">{subject.titre || subject.title}</h1>
                     </div>
                     <div className="flex items-center gap-2 relative">
-                        {/* Chat button */}
-                        <button
-                            onClick={handleChatToggle}
-                            className={`p-2 rounded-full ${isChatOpen ? 'bg-blue-100 text-blue-600' : 'hover:bg-blue-100 text-blue-600'}`}
-                            title="Discuter avec l'IA"
-                        >
-                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 2C6.48 2 2 6.48 2 12c0 1.54.36 3 .97 4.29L2 22l5.71-.97C9 21.64 10.46 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.31 0-2.56-.3-3.68-.84l-.27-.14-2.81.47.47-2.81-.14-.27A7.934 7.934 0 014 12c0-4.42 3.58-8 8-8s8 3.58 8 8-3.58 8-8 8z" />
-                            </svg>
-                        </button>
                         {/* Zoom controls */}
                         <button
                             onClick={() => setZoom(z => Math.max(0.5, Number((z - 0.1).toFixed(2))))}
@@ -270,13 +377,46 @@ export function SujetViewPage() {
                 </div>
             </header>
 
-            <div className="flex flex-1 overflow-hidden">
+            {/* Floating Chat Button - Sticky to right edge - Hidden when chat is open */}
+            {!isChatOpen && (
+                <div className="fixed right-0 z-40" style={{ top: `${buttonPosition.y}px` }}>
+                    {/* Tooltip bubble */}
+                    {showTooltip && (
+                        <div className="absolute right-20 top-1/2 -translate-y-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg animate-bounce">
+                            <div className="text-sm whitespace-nowrap">💬 Discutez avec l'IA !</div>
+                            <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-2 w-0 h-0 border-t-8 border-t-transparent border-b-8 border-b-transparent border-l-8 border-l-gray-800"></div>
+                        </div>
+                    )}
+
+                    <button
+                        onMouseDown={handleMouseDown}
+                        onClick={() => {
+                            if (!isDragging) {
+                                handleChatToggle();
+                                setShowTooltip(false);
+                            }
+                        }}
+                        className={`p-4 rounded-l-full shadow-2xl transition-all bg-white text-blue-600 hover:bg-blue-50 ${isDragging ? 'cursor-grabbing scale-110' : 'cursor-grab hover:scale-105'
+                            }`}
+                        title="Discuter avec l'IA (Déplaçable verticalement)"
+                    >
+                        <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 2C6.48 2 2 6.48 2 12c0 1.54.36 3 .97 4.29L2 22l5.71-.97C9 21.64 10.46 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.31 0-2.56-.3-3.68-.84l-.27-.14-2.81.47.47-2.81-.14-.27A7.934 7.934 0 014 12c0-4.42 3.58-8 8-8s8 3.58 8 8-3.58 8-8 8z" />
+                        </svg>
+                    </button>
+                </div>
+            )}
+
+            <div className="flex absolute top-[72px] left-0 right-0 bottom-0">
                 {/* PDF Viewer */}
                 <div
-                    className={`flex-1 overflow-auto transition-all duration-300 ${isChatOpen ? 'lg:w-3/5' : 'w-full'
-                        } ${isChatFullscreen ? 'hidden lg:block' : ''}`}
+                    className={`flex-1 overflow-y-auto ${isResizingChat ? '' : 'transition-all duration-300'} ${isChatFullscreen ? 'hidden lg:block' : ''
+                        }`}
+                    style={{
+                        marginRight: isChatOpen ? `${chatPanelWidth}%` : '0'
+                    }}
                 >
-                    <div ref={containerRef} className="flex flex-col items-center p-4 space-y-4 overflow-auto h-full">
+                    <div ref={containerRef} className="flex flex-col items-center p-4 space-y-4 min-h-full">
                         <Document
                             file={pdfSource || subject.pdfUrlResolved || subject.fichier_url || subject.pdfUrl}
                             onLoadSuccess={onDocumentLoadSuccess}
@@ -297,22 +437,56 @@ export function SujetViewPage() {
                         </Document>
                     </div>
                 </div>
+            </div>
 
-                {/* Chat Panel - Desktop */}
-                {isChatOpen && (
-                    <div className="hidden lg:flex lg:w-2/5 border-l border-gray-200 overflow-hidden">
+            {/* Chat Panel - Desktop with resize handle - Fixed position below header */}
+            {isChatOpen && (
+                <div
+                    className="hidden lg:flex flex-col border-l border-gray-200 fixed right-0 top-[72px] bottom-0 bg-white z-30"
+                    style={{ width: `${chatPanelWidth}%`, minWidth: '25%', maxWidth: '70%' }}
+                >
+                    {/* Resize handle */}
+                    <div
+                        className="absolute left-0 top-0 bottom-0 w-1 bg-gray-300 hover:bg-blue-500 cursor-col-resize z-10 group"
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            setIsResizingChat(true);
+                            const startX = e.clientX;
+                            const startWidth = chatPanelWidth;
+
+                            const handleMouseMove = (moveEvent: MouseEvent) => {
+                                const delta = startX - moveEvent.clientX;
+                                const newWidth = Math.min(70, Math.max(25, startWidth + (delta / window.innerWidth) * 100));
+                                setChatPanelWidth(newWidth);
+                            };
+
+                            const handleMouseUp = () => {
+                                setIsResizingChat(false);
+                                document.removeEventListener('mousemove', handleMouseMove);
+                                document.removeEventListener('mouseup', handleMouseUp);
+                            };
+
+                            document.addEventListener('mousemove', handleMouseMove);
+                            document.addEventListener('mouseup', handleMouseUp);
+                        }}
+                    >
+                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-12 bg-gray-400 group-hover:bg-blue-600 rounded-full"></div>
+                    </div>
+
+                    <div className="flex-1 overflow-hidden">
                         <ChatInterface
                             subjectContext={{
                                 id: subject.id,
                                 title: subject.titre || subject.title,
-                                url: pdfSource || subject.pdfUrlResolved || subject.fichier_url || subject.pdfUrl
+                                url: pdfSource || subject.pdfUrlResolved || subject.fichier_url || subject.pdfUrl,
+                                content: pdfTextContent || undefined
                             }}
                             userContext={userContext}
                             onClose={() => setIsChatOpen(false)}
                         />
                     </div>
-                )}
-            </div>
+                </div>
+            )}
 
             {/* Bottom Sheet - Mobile */}
             {isChatOpen && (
@@ -357,7 +531,8 @@ export function SujetViewPage() {
                                 subjectContext={{
                                     id: subject.id,
                                     title: subject.titre || subject.title,
-                                    url: pdfSource || subject.pdfUrlResolved || subject.fichier_url || subject.pdfUrl
+                                    url: pdfSource || subject.pdfUrlResolved || subject.fichier_url || subject.pdfUrl,
+                                    content: pdfTextContent || undefined
                                 }}
                                 userContext={userContext}
                             />

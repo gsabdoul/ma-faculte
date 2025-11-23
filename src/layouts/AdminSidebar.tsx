@@ -12,7 +12,8 @@ import {
     XMarkIcon,
     Squares2X2Icon,
     ArrowUturnLeftIcon,
-    BellIcon
+    BellIcon,
+    PhotoIcon
 } from '@heroicons/react/24/outline';
 
 interface AdminSidebarProps {
@@ -22,6 +23,7 @@ interface AdminSidebarProps {
 
 const menuItems = [
     { to: '/admin', text: 'Tableau de bord', icon: ChartBarIcon },
+    { to: '/admin/carousel', text: 'Carrousel', icon: PhotoIcon },
     { to: '/admin/users', text: 'Utilisateurs', icon: UsersIcon },
     { to: '/admin/revenues', text: 'Revenus', icon: CurrencyDollarIcon },
     { to: '/admin/notifications', text: 'Notifications', icon: BellIcon },

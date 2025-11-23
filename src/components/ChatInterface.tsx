@@ -9,6 +9,7 @@ interface ChatInterfaceProps {
         id: string;
         title: string;
         url: string;
+        content?: string; // Extracted PDF text
     };
     userContext?: any;
     onClose?: () => void;
@@ -17,33 +18,104 @@ interface ChatInterfaceProps {
 
 export function ChatInterface({ subjectContext, userContext, onClose, className = '' }: ChatInterfaceProps) {
     const [message, setMessage] = useState('');
-    const [messages, setMessages] = useState<{ id: number; text: string; sender: 'user' | 'ai' }[]>([]);
+    const [messages, setMessages] = useState<{ id: number; text: string; sender: 'user' | 'ai'; suggestions?: string[] }[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [conversationId, setConversationId] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-
-    // Message de bienvenue si contexte sujet
-    useEffect(() => {
-        if (subjectContext && messages.length === 0) {
-            setMessages([{
-                id: Date.now(),
-                text: `Bonjour ! Je vois que tu étudies "${subjectContext.title}". Pose-moi des questions sur ce document !`,
-                sender: 'ai'
-            }]);
-        }
-    }, [subjectContext]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
 
+    // Load or create conversation for this subject
+    useEffect(() => {
+        const loadConversation = async () => {
+            if (!subjectContext || !userContext?.id) return;
+
+            try {
+                // Try to find existing conversation for this subject
+                const { data: existingConv, error: convError } = await supabase
+                    .from('conversations')
+                    .select('id')
+                    .eq('user_id', userContext.id)
+                    .eq('sujet_id', subjectContext.id)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (convError) throw convError;
+
+                if (existingConv) {
+                    // Load existing conversation
+                    setConversationId(existingConv.id);
+
+                    // Load messages
+                    const { data: msgs, error: msgsError } = await supabase
+                        .from('messages')
+                        .select('*')
+                        .eq('conversation_id', existingConv.id)
+                        .order('created_at', { ascending: true });
+
+                    if (msgsError) throw msgsError;
+
+                    if (msgs && msgs.length > 0) {
+                        setMessages(msgs.map(m => ({
+                            id: m.id,
+                            text: m.content,
+                            sender: m.is_ai ? 'ai' : 'user'
+                        })));
+                    } else {
+                        // No messages yet, show welcome
+                        showWelcomeMessage();
+                    }
+                } else {
+                    // Create new conversation for this subject
+                    const { data: newConv, error: newConvError } = await supabase
+                        .from('conversations')
+                        .insert({
+                            user_id: userContext.id,
+                            title: `Discussion sur: ${subjectContext.title}`,
+                            sujet_id: subjectContext.id
+                        })
+                        .select('id')
+                        .single();
+
+                    if (newConvError) throw newConvError;
+
+                    if (newConv) {
+                        setConversationId(newConv.id);
+                        showWelcomeMessage();
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading conversation:', error);
+                showWelcomeMessage();
+            }
+        };
+
+        const showWelcomeMessage = () => {
+            setMessages([{
+                id: Date.now(),
+                text: `Bonjour ! Je suis Soukma. Je vois que tu étudies "${subjectContext?.title}". Pose-moi des questions sur ce document !`,
+                sender: 'ai'
+            }]);
+        };
+
+        loadConversation();
+    }, [subjectContext?.id, userContext?.id]);
+
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
 
-    const handleSendMessage = async () => {
-        if (message.trim() && !isLoading) {
-            const userText = message.trim();
+    const handleSendMessage = async (textOverride?: string) => {
+        const textToSend = textOverride || message;
+        if (textToSend.trim() && !isLoading) {
+            const userText = textToSend.trim();
             const tempId = Date.now();
+
+            // Clear suggestions from all previous messages
+            setMessages((prev) => prev.map(msg => ({ ...msg, suggestions: undefined })));
 
             // Optimistic UI update
             setMessages((prev) => [...prev, { id: tempId, text: userText, sender: 'user' }]);
@@ -51,25 +123,132 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
             setIsLoading(true);
 
             try {
-                // Appeler l'IA
-                const { data, error } = await supabase.functions.invoke('chat-ai', {
-                    body: {
-                        messages: [...messages, { text: userText, sender: 'user' }],
-                        userContext: userContext,
-                        subjectContext: subjectContext
-                    }
+                // Prepare messages for Edge Function
+                const messagesForEdge = messages.map((msg) => ({
+                    sender: msg.sender,
+                    text: msg.text,
+                }));
+                messagesForEdge.push({ sender: 'user', text: userText });
+
+                const edgeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-ai`;
+                const response = await fetch(edgeUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                    },
+                    body: JSON.stringify({
+                        messages: messagesForEdge,
+                        userContext,
+                        subjectContext,
+                    }),
                 });
 
-                if (error) throw error;
-                if (data && data.error) throw new Error(`IA Error: ${data.error}`);
-
-                if (data && data.text) {
-                    const aiText = data.text;
-                    setMessages((prev) => [
-                        ...prev,
-                        { id: Date.now() + 1, text: aiText, sender: 'ai' },
-                    ]);
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Edge Function Error ${response.status}: ${errorText}`);
                 }
+
+                // Stream the response
+                const reader = response.body?.getReader();
+                const decoder = new TextDecoder();
+
+                // Add a placeholder AI message
+                const aiMessageId = Date.now();
+                setMessages((prev) => [...prev, { id: aiMessageId, text: '', sender: 'ai' }]);
+
+                if (!reader) throw new Error('No reader available');
+
+                let done = false;
+                while (!done) {
+                    const { value, done: doneReading } = await reader.read();
+                    done = doneReading;
+
+                    if (value) {
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split('\n');
+
+                        for (const line of lines) {
+                            if (line.startsWith('data:')) {
+                                const data = line.slice(5).trim();
+                                if (data === '[DONE]') {
+                                    setIsLoading(false);
+                                    return;
+                                }
+
+                                try {
+                                    const parsed = JSON.parse(data);
+                                    const content = parsed.text;
+                                    if (content) {
+                                        setMessages((prev) =>
+                                            prev.map((msg) =>
+                                                msg.id === aiMessageId
+                                                    ? { ...msg, text: msg.text + content }
+                                                    : msg
+                                            )
+                                        );
+                                    }
+                                } catch (err) {
+                                    // Ignore parse errors for partial chunks
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // After streaming is complete, parse suggestions from the AI response
+                setMessages((prev) => {
+                    const lastMsg = prev[prev.length - 1];
+                    if (lastMsg && lastMsg.id === aiMessageId && lastMsg.text) {
+                        const suggestionMatch = lastMsg.text.match(/\[SUGGESTIONS\]\s*\n([\s\S]*?)(?:\n\n|$)/);
+                        let suggestions: string[] | undefined;
+                        let cleanText = lastMsg.text;
+
+                        if (suggestionMatch) {
+                            const suggestionsText = suggestionMatch[1];
+                            suggestions = suggestionsText
+                                .split('\n')
+                                .filter(line => line.trim())
+                                .map(line => line.replace(/^\d+\.\s*/, '').trim())
+                                .filter(q => q.length > 0)
+                                .slice(0, 3);
+
+                            // Remove the [SUGGESTIONS] block from the displayed text
+                            cleanText = lastMsg.text.replace(/\[SUGGESTIONS\]\s*\n[\s\S]*$/, '').trim();
+                        }
+
+                        // Save messages to database if we have a conversation ID
+                        if (conversationId && userContext?.id) {
+                            // Save user message
+                            supabase.from('messages').insert({
+                                conversation_id: conversationId,
+                                user_id: userContext.id,
+                                content: userText,
+                                is_ai: false
+                            }).then(({ error }) => {
+                                if (error) console.error('Error saving user message:', error);
+                            });
+
+                            // Save AI message
+                            supabase.from('messages').insert({
+                                conversation_id: conversationId,
+                                user_id: userContext.id,
+                                content: cleanText,
+                                is_ai: true
+                            }).then(({ error }) => {
+                                if (error) console.error('Error saving AI message:', error);
+                            });
+                        }
+
+                        return prev.map(msg =>
+                            msg.id === aiMessageId
+                                ? { ...msg, text: cleanText, suggestions }
+                                : msg
+                        );
+                    }
+                    return prev;
+                });
+
             } catch (error: any) {
                 console.error('Error in chat flow:', error);
                 setMessages((prev) => [
@@ -90,10 +269,10 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
 
     return (
         <div className={`flex flex-col h-full bg-white ${className}`}>
-            {/* Header */}
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
+            {/* Header - Fixed at top */}
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0 sticky top-0 bg-white z-10">
                 <div>
-                    <h3 className="font-semibold text-gray-800">Chat IA</h3>
+                    <h3 className="font-semibold text-gray-800">Soukma</h3>
                     {subjectContext && (
                         <p className="text-xs text-gray-500 truncate">
                             📄 {subjectContext.title}
@@ -118,22 +297,43 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                     <div
                         key={msg.id}
                         className={`p-3 rounded-lg max-w-[85%] text-base ${msg.sender === 'user'
-                                ? 'self-end bg-blue-500 text-white'
-                                : 'self-start bg-gray-100 text-gray-800'
+                            ? 'self-end bg-blue-500 text-white'
+                            : 'self-start bg-gray-100 text-gray-800'
                             }`}
                     >
                         {msg.sender === 'ai' ? (
-                            <div className="prose prose-base max-w-none dark:prose-invert">
-                                <ReactMarkdown
-                                    remarkPlugins={[remarkGfm]}
-                                    components={{
-                                        pre: ({ node, ...props }) => <pre className="overflow-auto w-full my-2 bg-gray-800 text-white p-2 rounded" {...props} />,
-                                        code: ({ node, ...props }) => <code className="bg-gray-200 text-red-500 px-1 rounded" {...props} />
-                                    }}
-                                >
-                                    {msg.text}
-                                </ReactMarkdown>
-                            </div>
+                            <>
+                                <div className="prose prose-base max-w-none dark:prose-invert">
+                                    <ReactMarkdown
+                                        remarkPlugins={[remarkGfm]}
+                                        components={{
+                                            pre: ({ node, ...props }) => <pre className="overflow-auto w-full my-2 bg-gray-800 text-white p-2 rounded" {...props} />,
+                                            code: ({ node, ...props }) => <code className="bg-gray-200 text-red-500 px-1 rounded" {...props} />
+                                        }}
+                                    >
+                                        {msg.text}
+                                    </ReactMarkdown>
+                                </div>
+                                {/* Suggested questions */}
+                                {msg.suggestions && msg.suggestions.length > 0 && (
+                                    <div className="mt-3 space-y-2">
+                                        <p className="text-xs text-gray-500 font-medium">Questions suggérées :</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {msg.suggestions.map((suggestion, idx) => (
+                                                <button
+                                                    key={idx}
+                                                    onClick={() => {
+                                                        handleSendMessage(suggestion);
+                                                    }}
+                                                    className="text-xs bg-white border border-gray-300 text-gray-700 px-3 py-1.5 rounded-full hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm"
+                                                >
+                                                    {suggestion}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
                         ) : (
                             msg.text
                         )}
@@ -141,10 +341,17 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                 ))}
                 {isLoading && (
                     <div className="self-start bg-gray-100 text-gray-800 p-3 rounded-lg">
-                        <span className="animate-pulse">L'IA réfléchit...</span>
+                        <span className="animate-pulse">Soukma réfléchit...</span>
                     </div>
                 )}
                 <div ref={messagesEndRef} />
+            </div>
+
+            {/* AI Disclaimer */}
+            <div className="px-4 py-2 bg-yellow-50 border-t border-yellow-100 flex-shrink-0">
+                <p className="text-xs text-yellow-800 text-center">
+                    💡 L'IA peut faire des erreurs. Vérifiez les informations importantes.
+                </p>
             </div>
 
             {/* Input */}
@@ -160,7 +367,7 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                         disabled={isLoading}
                     />
                     <button
-                        onClick={handleSendMessage}
+                        onClick={() => handleSendMessage()}
                         disabled={isLoading || !message.trim()}
                         className="absolute right-2 p-2 rounded-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
                     >

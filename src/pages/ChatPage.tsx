@@ -5,12 +5,11 @@ import { PaperAirplaneIcon, PaperClipIcon, Bars3Icon, XMarkIcon, PlusIcon, Penci
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-// URL of the Supabase Edge Function handling AI chat
-const EDGE_URL = 'https://qbrpefuxlzgtrntxdtwk.supabase.co/functions/v1/chat-ai';
+
 
 export function ChatPage() {
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<{ id: number; text: string; sender: 'user' | 'ai'; attachments?: any[] }[]>([]);
+  const [messages, setMessages] = useState<{ id: number; text: string; sender: 'user' | 'ai'; attachments?: any[]; suggestions?: string[] }[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<{ id: string; title: string; created_at: string }[]>([]);
@@ -197,6 +196,9 @@ export function ChatPage() {
       const tempId = Date.now();
       const currentFiles = [...attachedFiles];
 
+      // Clear suggestions from all previous messages
+      setMessages((prev) => prev.map(msg => ({ ...msg, suggestions: undefined })));
+
       // Optimistic UI update
       setMessages((prev) => [...prev, { id: tempId, text: userText, sender: 'user', attachments: currentFiles.map(f => ({ name: f.name, type: f.type, size: f.size })) }]);
       setMessage('');
@@ -204,6 +206,12 @@ export function ChatPage() {
       setIsLoading(true);
 
       try {
+        const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+        if (!apiKey) {
+          throw new Error("La clé API OpenRouter n'est pas configurée. Vérifiez votre fichier .env");
+        }
+        console.log("API Key present:", !!apiKey); // Debug log (do not log the actual key)
+
         let conversationId = currentConversationId;
 
         // Si pas de conversation active, en créer une
@@ -253,8 +261,16 @@ export function ChatPage() {
 
         // 2. Construire la requête pour l'IA AVANT de mettre à jour le state local
         // (pour éviter les problèmes de closure avec l'ancien state)
+        // Remove any AI messages that have empty/null content before building the request
+        const filteredState = messages.filter((m) => {
+          // Keep all user messages and AI messages that have non‑empty text
+          if (m.sender === 'ai') {
+            return m.text && m.text.trim() !== '';
+          }
+          return true;
+        });
         const messagesForAI = [
-          ...messages.map(msg => ({
+          ...filteredState.map((msg) => ({
             text: msg.text,
             sender: msg.sender,
             attachments: msg.attachments || []
@@ -276,103 +292,109 @@ export function ChatPage() {
           } : msg
         ));
 
-        // 4. Appeler l'IA
-        console.log('Sending request to Edge Function:', EDGE_URL);
+        // 4. Appeler l'IA via Edge Function
+        const messagesForEdge = messagesForAI.map((msg) => ({
+          sender: msg.sender,
+          text: msg.text,
+        }));
 
-        const requestBody = {
-          messages: messagesForAI,
-          userContext,
-          subjectContext,
-        };
-        console.log('Request Payload:', JSON.stringify(requestBody, null, 2));
-
-        const response = await fetch(EDGE_URL, {
+        const edgeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-ai`;
+        const response = await fetch(edgeUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
-          body: JSON.stringify(requestBody),
+          body: JSON.stringify({
+            messages: messagesForEdge,
+            userContext,
+            subjectContext,
+          }),
         });
 
-        console.log('Response Status:', response.status);
+        console.log('Edge Function Response Status:', response.status);
 
         if (!response.ok) {
           const errorText = await response.text();
           console.log('Error Response Text:', errorText);
-          throw new Error(`API Error ${response.status}: ${errorText}`);
+          throw new Error(`Edge Function Error ${response.status}: ${errorText}`);
         }
 
-        // Handle streaming response
+        // Stream the response
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
 
-        if (!reader) {
-          throw new Error('No response body available');
-        }
+        // Add a placeholder AI message
+        const aiMessageId = Date.now();
+        setMessages((prev) => [...prev, { id: aiMessageId, text: '', sender: 'ai' }]);
 
-        let aiText = '';
-        const tempAiId = Date.now() + 2;
+        if (!reader) throw new Error('No reader available');
 
-        // Add empty AI message that will be updated progressively
-        setMessages((prev) => [
-          ...prev,
-          { id: tempAiId, text: '', sender: 'ai' },
-        ]);
+        let done = false;
+        while (!done) {
+          const { value, done: doneReading } = await reader.read();
+          done = doneReading;
 
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
+          if (value) {
             const chunk = decoder.decode(value, { stream: true });
             const lines = chunk.split('\n');
 
             for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.slice(6);
+              if (line.startsWith('data:')) {
+                const data = line.slice(5).trim();
+                if (data === '[DONE]') {
+                  setIsLoading(false);
+                  return;
+                }
+
                 try {
                   const parsed = JSON.parse(data);
-                  if (parsed.text) {
-                    aiText += parsed.text;
-                    // Update the AI message progressively
+                  const content = parsed.text;
+                  if (content) {
                     setMessages((prev) =>
                       prev.map((msg) =>
-                        msg.id === tempAiId ? { ...msg, text: aiText } : msg
+                        msg.id === aiMessageId
+                          ? { ...msg, text: msg.text + content }
+                          : msg
                       )
                     );
                   }
-                } catch (e) {
-                  // Skip invalid JSON
+                } catch (err) {
+                  // Ignore parse errors for partial chunks
                 }
               }
             }
           }
-
-          // Save complete AI response to database
-          if (aiText) {
-            const { data: savedAiMessage, error: aiSaveError } = await supabase.from('messages').insert({
-              conversation_id: conversationId,
-              user_id: userId,
-              content: aiText,
-              is_ai: true
-            }).select().single();
-
-            if (aiSaveError) throw aiSaveError;
-
-            // Replace temp AI message with DB message
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === tempAiId ? { id: savedAiMessage.id, text: aiText, sender: 'ai' } : msg
-              )
-            );
-          } else {
-            throw new Error('Aucune réponse reçue de l\'IA. Veuillez réessayer.');
-          }
-        } catch (streamError: any) {
-          console.error('Streaming error:', streamError);
-          throw streamError;
         }
+
+        // After streaming is complete, parse suggestions from the AI response
+        setMessages((prev) => {
+          const lastMsg = prev[prev.length - 1];
+          if (lastMsg && lastMsg.id === aiMessageId && lastMsg.text) {
+            const suggestionMatch = lastMsg.text.match(/\[SUGGESTIONS\]\s*\n([\s\S]*?)(?:\n\n|$)/);
+            if (suggestionMatch) {
+              const suggestionsText = suggestionMatch[1];
+              const suggestions = suggestionsText
+                .split('\n')
+                .filter(line => line.trim())
+                .map(line => line.replace(/^\d+\.\s*/, '').trim())
+                .filter(q => q.length > 0)
+                .slice(0, 3);
+
+              // Remove the [SUGGESTIONS] block from the displayed text
+              const cleanText = lastMsg.text.replace(/\[SUGGESTIONS\]\s*\n[\s\S]*$/, '').trim();
+
+              return prev.map(msg =>
+                msg.id === aiMessageId
+                  ? { ...msg, text: cleanText, suggestions }
+                  : msg
+              );
+            }
+          }
+          return prev;
+        });
+
+
       } catch (error: any) {
         console.error('Error in chat flow:', error);
         setMessages((prev) => [
@@ -606,12 +628,12 @@ export function ChatPage() {
           >
             <Bars3Icon className="h-6 w-6 text-gray-600" />
           </button>
-          <h1 className="text-xl font-bold ml-4">Chat IA</h1>
+          <h1 className="text-xl font-bold ml-4">Soukma</h1>
         </div>
 
         {/* En-tête Desktop (optionnel, pour garder le titre) */}
         <div className="hidden lg:flex items-center p-4 bg-white border-b border-gray-100">
-          <h1 className="text-xl font-bold">Chat IA</h1>
+          <h1 className="text-xl font-bold">Soukma</h1>
         </div>
 
         {/* Bandeau de contexte sujet */}
@@ -635,7 +657,7 @@ export function ChatPage() {
             <div className="h-full flex flex-col items-center justify-center text-gray-500 space-y-6">
               <div className="text-center">
                 <p className="text-lg font-medium text-gray-700 mb-2">Bonjour {userContext?.prenom || 'étudiant'} ! 👋</p>
-                <p>Je suis ton assistant universitaire. Comment puis-je t'aider ?</p>
+                <p>Je suis <strong>Soukma</strong>, ton assistant universitaire. Comment puis-je t'aider ?</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full max-w-2xl px-4">
@@ -661,17 +683,39 @@ export function ChatPage() {
                     }`}
                 >
                   {msg.sender === 'ai' ? (
-                    <div className="prose prose-base max-w-none dark:prose-invert">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          pre: ({ node, ...props }) => <pre className="overflow-auto w-full my-2 bg-gray-800 text-white p-2 rounded" {...props} />,
-                          code: ({ node, ...props }) => <code className="bg-gray-200 text-red-500 px-1 rounded" {...props} />
-                        }}
-                      >
-                        {msg.text}
-                      </ReactMarkdown>
-                    </div>
+                    <>
+                      <div className="prose prose-base max-w-none dark:prose-invert">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            pre: ({ node, ...props }) => <pre className="overflow-auto w-full my-2 bg-gray-800 text-white p-2 rounded" {...props} />,
+                            code: ({ node, ...props }) => <code className="bg-gray-200 text-red-500 px-1 rounded" {...props} />
+                          }}
+                        >
+                          {msg.text}
+                        </ReactMarkdown>
+                      </div>
+                      {/* Suggested questions */}
+                      {msg.suggestions && msg.suggestions.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          <p className="text-xs text-gray-500 font-medium">Questions suggérées :</p>
+                          <div className="flex flex-wrap gap-2">
+                            {msg.suggestions.map((suggestion, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  setMessage(suggestion);
+                                  handleSendMessage();
+                                }}
+                                className="text-xs bg-white border border-gray-300 text-gray-700 px-3 py-1.5 rounded-full hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm"
+                              >
+                                {suggestion}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="flex flex-col gap-2">
                       {msg.text && <div className="break-words whitespace-pre-wrap">{msg.text}</div>}
@@ -719,6 +763,13 @@ export function ChatPage() {
               <div ref={messagesEndRef} />
             </>
           )}
+        </div>
+
+        {/* AI Disclaimer */}
+        <div className="px-4 py-2 bg-yellow-50 border-t border-yellow-100">
+          <p className="text-xs text-yellow-800 text-center">
+            💡 L'IA peut faire des erreurs. Vérifiez les informations importantes.
+          </p>
         </div>
 
         {/* Champ de saisie et bouton d'envoi */}
@@ -803,6 +854,6 @@ export function ChatPage() {
           </div>
         </div>
       </div>
-    </div>
+    </div >
   );
 }

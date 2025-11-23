@@ -15,11 +15,10 @@ export function EditBookPage() {
     const navigate = useNavigate();
 
     const [title, setTitle] = useState('');
-    const [author, setAuthor] = useState('');
     const [selectedModuleId, setSelectedModuleId] = useState('');
     const [selectedModuleName, setSelectedModuleName] = useState('');
     const [coverFile, setCoverFile] = useState<File | null>(null);
-    const [pdfFile, setPdfFile] = useState<File | null>(null);
+    const [fileUrl, setFileUrl] = useState('');
 
     const [modules, setModules] = useState<Module[]>([]);
     const [loading, setLoading] = useState(true);
@@ -50,9 +49,9 @@ export function EditBookPage() {
 
                 const book = bookRes.data;
                 setTitle(book.titre);
-                setAuthor(book.auteur || '');
                 setSelectedModuleId(book.module_id);
                 setSelectedModuleName(book.modules?.nom || '');
+                setFileUrl(book.fichier_url || '');
 
                 setModules(modsRes.data.map((m: any) => ({ id: m.id, name: m.nom })));
             } catch (err: any) {
@@ -72,8 +71,8 @@ export function EditBookPage() {
         try {
             const bookUpdate: any = {
                 titre: title,
-                auteur: author,
                 module_id: selectedModuleId,
+                fichier_url: fileUrl
             };
 
             if (coverFile) {
@@ -81,14 +80,6 @@ export function EditBookPage() {
                 const { error: uploadError } = await supabase.storage.from('livres').upload(filePath, coverFile);
                 if (uploadError) throw uploadError;
                 bookUpdate.couverture_url = supabase.storage.from('livres').getPublicUrl(filePath).data.publicUrl;
-            }
-
-            if (pdfFile) {
-                const pdfFilePath = `public/pdfs/${Date.now()}_${pdfFile.name.replace(/\s/g, '_')}`;
-                const { error: pdfUploadError } = await supabase.storage.from('livres').upload(pdfFilePath, pdfFile);
-                if (pdfUploadError) throw pdfUploadError;
-                bookUpdate.fichier_url = supabase.storage.from('livres').getPublicUrl(pdfFilePath).data.publicUrl;
-                bookUpdate.taille_fichier = pdfFile.size;
             }
 
             const { error: updateError } = await supabase.from('livres').update(bookUpdate).eq('id', bookId);
@@ -127,10 +118,6 @@ export function EditBookPage() {
                         <input type="text" id="title" value={title} onChange={(e) => setTitle(e.target.value)} required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
                     </div>
                     <div>
-                        <label htmlFor="author" className="block text-sm font-medium text-gray-700">Auteur</label>
-                        <input type="text" id="author" value={author} onChange={(e) => setAuthor(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
-                    </div>
-                    <div>
                         <label className="block text-sm font-medium text-gray-700">Module</label>
                         <SearchableSelect
                             options={modules}
@@ -146,8 +133,8 @@ export function EditBookPage() {
                         <input type="file" id="coverFile" accept="image/*" onChange={(e) => setCoverFile(e.target.files ? e.target.files[0] : null)} className="mt-1 block w-full text-sm" />
                     </div>
                     <div>
-                        <label htmlFor="pdfFile" className="block text-sm font-medium text-gray-700">Remplacer le PDF (optionnel)</label>
-                        <input type="file" id="pdfFile" accept="application/pdf" onChange={(e) => setPdfFile(e.target.files ? e.target.files[0] : null)} className="mt-1 block w-full text-sm" />
+                        <label htmlFor="fileUrl" className="block text-sm font-medium text-gray-700">URL du fichier (PDF/Drive)</label>
+                        <input type="text" id="fileUrl" value={fileUrl} onChange={(e) => setFileUrl(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" placeholder="https://..." />
                     </div>
                     <div className="pt-4">
                         <button type="submit" disabled={submitting} className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 disabled:bg-blue-300">

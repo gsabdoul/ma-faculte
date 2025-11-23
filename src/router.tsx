@@ -34,10 +34,10 @@ import { EditDrivePage } from './pages/writer/EditDrivePage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ChatPage } from './pages/ChatPage';
-import { TestOpenRouterPage } from './pages/TestOpenRouterPage';
 import { ManageNotifications } from './pages/admin/ManageNotifications';
 import { ManageFacultiesPage } from './pages/admin/ManageFacultiesPage';
 import { ManageSignalementsPage } from './pages/admin/ManageSignalementsPage';
+import { ManageCarouselPage } from './pages/admin/ManageCarouselPage';
 
 
 export const router = createHashRouter([
@@ -60,7 +60,6 @@ export const router = createHashRouter([
                     { path: "home", element: <HomePage /> },
                     { path: "drives", element: <DrivesPage /> },
                     { path: "chat", element: <ChatPage /> },
-                    { path: "test-openrouter", element: <TestOpenRouterPage /> },
                     { path: "livres", element: <BooksPage /> },
                     { path: "profil", element: <ProfilePage /> }, // Note: les sous-routes de profil sont en dehors du MainLayout
                     { path: "modules/:moduleId/universites", element: <UniversitePage /> },
@@ -118,6 +117,7 @@ export const router = createHashRouter([
                     { path: "notifications", element: <ManageNotifications /> },
                     { path: "signalements", element: <ManageSignalementsPage /> },
                     { path: "faculties", element: <ManageFacultiesPage /> },
+                    { path: "carousel", element: <ManageCarouselPage /> },
                 ]
             }
         ]

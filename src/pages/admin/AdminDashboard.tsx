@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { StatsCards } from '../../../StatsCards';
+import { StatsCards } from '../../components/StatsCards';
 import { supabase } from '../../supabase';
 
 interface AdminDashboardStats {

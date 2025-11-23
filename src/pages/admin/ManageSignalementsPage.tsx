@@ -17,11 +17,8 @@ interface Report {
     type: 'sujet' | 'livre' | 'drive';
     user: {
         id: string;
-        email: string | null;
-        profile: {
-            nom: string | null;
-            prenom: string | null;
-        } | null;
+        nom: string | null;
+        prenom: string | null;
     } | null;
     item_title: string | null;
     admin_comment: string | null;
@@ -54,22 +51,45 @@ export function ManageSignalementsPage() {
             setLoading(true);
             setError(null);
             try {
-                const { data, error: fetchError } = await supabase
+                // 1. Fetch signalements first (without polymorphic joins)
+                const { data: reportsData, error: fetchError } = await supabase
                     .from('signalements')
                     .select(`
                     id, created_at, description, item_id, statut, type, admin_comment,
-                    user:user_id(id, email, profile:profiles(nom, prenom)),
-                    sujet:sujets(titre),
-                    livre:livres(titre),
-                    drive:drives(titre)
+                    user:profiles(id, nom, prenom)
                 `);
 
                 if (fetchError) throw new Error(fetchError.message);
 
-                const formattedData = data.map((r: any) => ({
-                    ...r,
-                    item_title: r.sujet?.titre || r.livre?.titre || r.drive?.titre || 'Élément inconnu',
-                }));
+                // 2. Collect IDs for each type
+                const sujetIds = reportsData.filter((r: any) => r.type === 'sujet').map((r: any) => r.item_id);
+                const livreIds = reportsData.filter((r: any) => r.type === 'livre').map((r: any) => r.item_id);
+                const driveIds = reportsData.filter((r: any) => r.type === 'drive').map((r: any) => r.item_id);
+
+                // 3. Fetch related items in parallel
+                const [sujetsRes, livresRes, drivesRes] = await Promise.all([
+                    sujetIds.length > 0 ? supabase.from('sujets').select('id, titre').in('id', sujetIds) : { data: [] },
+                    livreIds.length > 0 ? supabase.from('livres').select('id, titre').in('id', livreIds) : { data: [] },
+                    driveIds.length > 0 ? supabase.from('drives').select('id, titre').in('id', driveIds) : { data: [] }
+                ]);
+
+                // 4. Create lookup maps
+                const sujetsMap = new Map(sujetsRes.data?.map((s: any) => [s.id, s.titre]));
+                const livresMap = new Map(livresRes.data?.map((l: any) => [l.id, l.titre]));
+                const drivesMap = new Map(drivesRes.data?.map((d: any) => [d.id, d.titre]));
+
+                // 5. Merge data
+                const formattedData = reportsData.map((r: any) => {
+                    let title = 'Élément inconnu';
+                    if (r.type === 'sujet') title = sujetsMap.get(r.item_id) || 'Sujet introuvable';
+                    else if (r.type === 'livre') title = livresMap.get(r.item_id) || 'Livre introuvable';
+                    else if (r.type === 'drive') title = drivesMap.get(r.item_id) || 'Drive introuvable';
+
+                    return {
+                        ...r,
+                        item_title: title,
+                    };
+                });
 
                 setReports(formattedData);
             } catch (err: any) {
@@ -90,17 +110,12 @@ export function ManageSignalementsPage() {
                 const valA = a[key];
                 const valB = b[key];
 
-                // Gérer les cas où les valeurs sont null ou undefined
                 if (valA == null && valB == null) return 0;
                 if (valA == null) return direction === 'ascending' ? -1 : 1;
                 if (valB == null) return direction === 'ascending' ? 1 : -1;
 
-                if (valA < valB) {
-                    return direction === 'ascending' ? -1 : 1;
-                }
-                if (valA > valB) {
-                    return direction === 'ascending' ? 1 : -1;
-                }
+                if (valA < valB) return direction === 'ascending' ? -1 : 1;
+                if (valA > valB) return direction === 'ascending' ? 1 : -1;
                 return 0;
             });
         }
@@ -133,7 +148,6 @@ export function ManageSignalementsPage() {
     const getItemLink = (report: Report) => {
         const base = window.location.origin + '/#';
         if (report.type === 'sujet') return `${base}/sujets/${report.item_id}`;
-        // Les livres et drives n'ont pas de page de vue individuelle pour le moment
         return null;
     };
 
@@ -184,14 +198,11 @@ export function ManageSignalementsPage() {
         }
     };
 
-
-
     // Pagination logic
     const totalPages = Math.ceil(sortedReports.length / REPORTS_PER_PAGE);
     const currentReports = sortedReports.slice((currentPage - 1) * REPORTS_PER_PAGE, currentPage * REPORTS_PER_PAGE);
 
     const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
-
 
     if (loading) return <div className="text-center p-8">Chargement des signalements...</div>;
     if (error) return <div className="text-center p-8 text-red-500">Erreur: {error}</div>;
@@ -231,11 +242,10 @@ export function ManageSignalementsPage() {
                                 <td className="py-3 px-4">
                                     <div className="flex items-center">
                                         <div className="flex-shrink-0 h-10 w-10 flex items-center justify-center bg-gray-100 rounded-full">
-                                            <UserCircleIcon className="h-6 w-6 text-gray-400"  />
+                                            <UserCircleIcon className="h-6 w-6 text-gray-400" />
                                         </div>
                                         <div>
-                                            <p className="font-medium text-gray-800">{`${report.user?.profile?.prenom || ''} ${report.user?.profile?.nom || ''}`.trim() || 'Utilisateur Anonyme'}</p>
-                                            <p className="text-xs text-gray-500">{report.user?.email}</p>
+                                            <p className="font-medium text-gray-800">{`${report.user?.prenom || ''} ${report.user?.nom || ''}`.trim() || 'Utilisateur Anonyme'}</p>
                                         </div>
                                     </div>
                                 </td>
@@ -312,7 +322,7 @@ export function ManageSignalementsPage() {
                 title={`Commentaire pour le signalement`}
             >
                 <div>
-                    <p className="text-sm text-gray-600 mb-1">Signalement de: <span className="font-semibold">{`${editingReport?.user?.profile?.prenom || ''} ${editingReport?.user?.profile?.nom || ''}`.trim()}</span></p>
+                    <p className="text-sm text-gray-600 mb-1">Signalement de: <span className="font-semibold">{`${editingReport?.user?.prenom || ''} ${editingReport?.user?.nom || ''}`.trim()}</span></p>
                     <p className="text-sm text-gray-600 mb-4">Élément: <span className="font-semibold">{editingReport?.item_title}</span></p>
                     <textarea
                         value={adminComment}

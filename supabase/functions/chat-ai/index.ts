@@ -35,9 +35,14 @@ Deno.serve(async (req: Request) => {
         }
 
         // 3. Build System Prompt with Application Context
-        let systemInstruction = `Tu es un assistant pédagogique intelligent pour l'application "Ma faculté".
+        let systemInstruction = `Tu es "Soukma" (qui signifie "demande-moi" en langue mooré), l'assistant pédagogique intelligent de l'application "Ma faculté".
 
-## À propos de l'application
+## Ton Identité
+- Nom : Soukma
+- Créateur : Savadogo Abdoul Guélilou
+- Mission : Aider les étudiants universitaires au Burkina Faso
+
+## À propos de l'application "Ma faculté"
 Ma faculté est une plateforme éducative destinée aux étudiants universitaires au Burkina Faso. L'application permet d'accéder à:
 - **Anciens sujets d'examens** organisés par module et université (fichiers PDF)
 - **Livres académiques** par module (fichiers PDF avec couvertures)
@@ -51,18 +56,22 @@ L'application est organisée autour de :
 - **Niveaux** : Années d'étude (ex: 1ère année, 2ème année, Licence, Master)
 - **Modules** : Matières/cours enseignés (peuvent être gratuits ou premium)
 
-## Fonctionnalités principales
-1. **Page Accueil**: Accès aux anciens sujets par module et université
-2. **Page Drives**: Liens vers Google Drives partagés
-3. **Page Livres**: Bibliothèque de livres académiques par module
-4. **Page Profil**: Informations de l'étudiant, abonnement, équipe
+## RÈGLE CRITIQUE - ANTI-HALLUCINATION
+Tu ne dois JAMAIS inventer de contenu qui n'existe pas dans le contexte fourni.
+- Si on te demande le contenu d'un document PDF et que tu n'as pas le texte extrait ci-dessous, dis : "Je n'ai pas accès au contenu de ce document pour le moment."
+- Ne génère pas de faux texte de loi, de fausses questions d'examen ou de faux résumés.
 
 ## Ton rôle
 - Aide les étudiants dans leurs révisions et apprentissage
 - Réponds à leurs questions académiques
 - Suggère des ressources pertinentes (sujets, livres, drives) basées sur leur faculté et niveau
 - Reste dans le contexte universitaire burkinabé
-- Adapte tes réponses au niveau d'étude de l'étudiant`;
+- Adapte tes réponses au niveau d'étude de l'étudiant
+- À la fin de tes réponses, propose souvent 3 questions courtes de suivi pertinentes, formatées exactement comme ceci :
+[SUGGESTIONS]
+1. Question 1 ?
+2. Question 2 ?
+3. Question 3 ?`;
 
         if (userContext) {
             systemInstruction += `\n\n## Contexte de l'étudiant actuel
@@ -74,12 +83,23 @@ L'application est organisée autour de :
             if (userContext.modules && userContext.modules.length > 0) {
                 systemInstruction += `\n- **Modules suivis**: ${userContext.modules.join(', ')}`;
             }
-
-            systemInstruction += `\n\n**Important**: Adapte tes réponses au niveau d'étude de cet étudiant et suggère des ressources pertinentes disponibles dans l'application.`;
         }
 
         if (subjectContext) {
-            systemInstruction += `\n\nL'étudiant consulte actuellement le document : "${subjectContext.title}".`;
+            systemInstruction += `\n\n## Contexte du document actuel
+L'étudiant consulte actuellement le document : "${subjectContext.title}".`;
+
+            if (subjectContext.content) {
+                systemInstruction += `\n\n## Contenu du PDF (extrait)
+Voici le texte extrait du document PDF que l'étudiant consulte. Utilise ce contenu pour répondre précisément à ses questions :
+
+${subjectContext.content}
+
+**RAPPEL** : Réponds en te basant UNIQUEMENT sur ce contenu pour les questions spécifiques au document.`;
+            } else {
+                systemInstruction += `\n\n**Note** : Le contenu du PDF n'a pas pu être extrait. Guide l'étudiant vers la lecture directe du document pour les détails spécifiques.`;
+            }
+
             if (subjectContext.url) {
                 systemInstruction += ` URL du document : ${subjectContext.url}`;
             }
@@ -104,9 +124,10 @@ L'application est organisée autour de :
                 'X-Title': 'Ma Faculte',
             },
             body: JSON.stringify({
-                model: "mistralai/mistral-7b-instruct:free",
+                model: "x-ai/grok-4.1-fast:free",
                 messages: openRouterMessages,
-                stream: true, // Enable streaming
+                stream: true,
+                temperature: 0.7,
             }),
         });
 
@@ -142,11 +163,16 @@ L'application est organisée autour de :
 
                                 try {
                                     const parsed = JSON.parse(data);
-                                    const content = parsed.choices?.[0]?.delta?.content;
+                                    let content = parsed.choices?.[0]?.delta?.content;
 
                                     if (content) {
-                                        // Send SSE formatted data
-                                        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ text: content })}\n\n`));
+                                        // Filter out unwanted tokens
+                                        content = content.replace(/<s>/g, '').replace(/<\/s>/g, '');
+
+                                        if (content) {
+                                            // Send SSE formatted data
+                                            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ text: content })}\n\n`));
+                                        }
                                     }
                                 } catch (e) {
                                     // Skip invalid JSON
@@ -154,6 +180,8 @@ L'application est organisée autour de :
                             }
                         }
                     }
+                    // Send [DONE] at the end
+                    controller.enqueue(new TextEncoder().encode(`data: [DONE]\n\n`));
                 } catch (error) {
                     console.error('Streaming error:', error);
                 } finally {

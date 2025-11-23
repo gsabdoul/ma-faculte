@@ -28,7 +28,7 @@ const CarouselSkeleton = () => (
 export function HomePage() {
     const navigate = useNavigate();
     const { unreadCount } = useNotifications();
-    const { profile } = useUser();
+    const { profile, loading: userLoading } = useUser();
     const [modules, setModules] = useState<Module[]>([]);
     const [carouselItems, setCarouselItems] = useState<any[]>([]);
     const [loadingModules, setLoadingModules] = useState(true);
@@ -62,9 +62,18 @@ export function HomePage() {
 
     useEffect(() => {
         const fetchModules = async () => {
+            // Attendre que le profil utilisateur soit chargé pour éviter le "flash"
+            if (userLoading) return;
+
             setLoadingModules(true);
             try {
                 if (profile?.faculte_id && profile?.niveau_id) {
+                    // Récupérer les modules liés à la faculté et au niveau
+                    // On trie par le nom du module (via la relation)
+                    // Note: Supabase ne permet pas toujours le tri facile sur les relations imbriquées en une seule requête simple sans alias,
+                    // mais on peut trier côté client si nécessaire. Essayons d'abord le tri côté JS pour être sûr car 'modules(nom)' order peut être tricky.
+                    // Actually, let's try to fetch and then sort in JS to be robust, or use the inner order if possible.
+                    // Given the structure, sorting the result in JS is safest and fastest to implement reliably here.
                     const { data, error } = await supabase
                         .from('module_faculte_niveau')
                         .select('modules(id, nom, icone_url, is_free)')
@@ -75,11 +84,11 @@ export function HomePage() {
                         console.error("Erreur lors du chargement des modules (filtrés):", error);
                         setModules([]);
                     } else {
-                        const mods = (data ?? []) // data is { modules: { id, nom, ... } }[]
+                        const mods = (data ?? [])
                             .map((row: any) => row.modules)
-                            .filter(Boolean); // filter out null modules
+                            .filter(Boolean);
 
-                        // Deduplicate modules
+                        // Deduplicate and sort
                         const uniqueById = Object.values(
                             mods.reduce((acc: Record<string, any>, m) => {
                                 acc[m.id] = {
@@ -88,14 +97,16 @@ export function HomePage() {
                                 };
                                 return acc;
                             }, {})
-                        );
+                        ).sort((a: any, b: any) => a.nom.localeCompare(b.nom));
+
                         setModules(uniqueById);
                     }
                 } else {
                     // Fallback if user has no faculty/level - show all modules
                     const { data, error } = await supabase
                         .from('modules')
-                        .select('id, nom, icone_url, is_free');
+                        .select('id, nom, icone_url, is_free')
+                        .order('nom', { ascending: true });
 
                     if (error) {
                         console.error("Erreur lors du chargement des modules:", error);
@@ -115,7 +126,7 @@ export function HomePage() {
             }
         };
         fetchModules();
-    }, [profile]);
+    }, [profile, userLoading]);
 
     useEffect(() => {
         const fetchCarouselItems = async () => {
