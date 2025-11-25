@@ -16,11 +16,13 @@ import {
     CurrencyDollarIcon as CurrencyDollarSolid,
     BellIcon as BellSolid,
     ExclamationTriangleIcon as ExclamationTriangleSolid,
+    PhotoIcon as PhotoSolid,
 } from '@heroicons/react/24/solid';
 
 const adminNavItems = [
     { name: 'Tableau de bord', to: '/admin', icon: ChartBarSolid, end: true },
     { name: 'Gérer les utilisateurs', to: '/admin/users', icon: UsersSolid },
+    { name: 'Gestion du Carrousel', to: '/admin/carousel', icon: PhotoSolid },
     { name: 'Gérer les sujets', to: '/admin/subjects', icon: DocumentTextSolid },
     { name: 'Gérer les livres', to: '/admin/books', icon: BookOpenSolid },
     { name: 'Gérer les drives', to: '/admin/drives', icon: FolderSolid },

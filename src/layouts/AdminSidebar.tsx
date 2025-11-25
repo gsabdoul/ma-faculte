@@ -23,7 +23,6 @@ interface AdminSidebarProps {
 
 const menuItems = [
     { to: '/admin', text: 'Tableau de bord', icon: ChartBarIcon },
-    { to: '/admin/carousel', text: 'Carrousel', icon: PhotoIcon },
     { to: '/admin/users', text: 'Utilisateurs', icon: UsersIcon },
     { to: '/admin/revenues', text: 'Revenus', icon: CurrencyDollarIcon },
     { to: '/admin/notifications', text: 'Notifications', icon: BellIcon },
@@ -34,6 +33,7 @@ const menuItems = [
     { to: '/admin/modules', text: 'Modules', icon: Squares2X2Icon },
     { to: '/admin/faculties', text: 'Facultés', icon: BuildingLibraryIcon },
     { to: '/admin/universities', text: 'Universités', icon: AcademicCapIcon },
+    { to: '/admin/carousel', text: 'Gestion du Carrousel', icon: PhotoIcon },
 ];
 
 const NavItem: React.FC<{ to: string; text: string; icon: React.ElementType, onClick: () => void }> = ({ to, text, icon: Icon, onClick }) => (
@@ -65,8 +65,7 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
             {/* Sidebar */}
             <aside
                 className={`fixed top-0 left-0 h-full w-64 bg-white shadow-xl z-40 flex flex-col transform transition-transform lg:relative lg:translate-x-0 lg:shadow-none
-                    ${isOpen ? 'translate-x-0' : '-translate-x-full'}`
-                }
+                    ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
             >
                 <div className="flex items-center justify-between p-4 border-b lg:justify-center">
                     <Link to="/admin" className="flex items-center space-x-2 text-xl font-bold text-gray-800">
