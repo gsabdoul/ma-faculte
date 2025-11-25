@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../supabase';
-import { PaperAirplaneIcon, PaperClipIcon, Bars3Icon, XMarkIcon, PlusIcon, PencilIcon, TrashIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { PaperAirplaneIcon, PaperClipIcon, Bars3Icon, XMarkIcon, PlusIcon, PencilIcon, TrashIcon, CheckIcon, ClipboardDocumentIcon, StopIcon } from '@heroicons/react/24/outline';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -23,6 +23,11 @@ export function ChatPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+
+  // États pour l'édition de message
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  const [editMessageContent, setEditMessageContent] = useState('');
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const [userContext, setUserContext] = useState<any>(null);
 
@@ -292,11 +297,13 @@ export function ChatPage() {
           } : msg
         ));
 
-        // 4. Appeler l'IA via Edge Function
         const messagesForEdge = messagesForAI.map((msg) => ({
           sender: msg.sender,
           text: msg.text,
         }));
+
+        // Create AbortController for stop functionality
+        abortControllerRef.current = new AbortController();
 
         const edgeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-ai`;
         const response = await fetch(edgeUrl, {
@@ -310,6 +317,7 @@ export function ChatPage() {
             userContext,
             subjectContext,
           }),
+          signal: abortControllerRef.current.signal,
         });
 
         console.log('Edge Function Response Status:', response.status);
@@ -394,15 +402,21 @@ export function ChatPage() {
           return prev;
         });
 
-
       } catch (error: any) {
         console.error('Error in chat flow:', error);
-        setMessages((prev) => [
-          ...prev,
-          { id: Date.now() + 2, text: `Erreur: ${error.message}`, sender: 'ai' },
-        ]);
+
+        // Don't show error message if user stopped generation
+        if (error.name === 'AbortError') {
+          console.log('Generation stopped by user');
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            { id: Date.now() + 2, text: `Erreur: ${error.message}`, sender: 'ai' },
+          ]);
+        }
       } finally {
         setIsLoading(false);
+        abortControllerRef.current = null;
       }
     }
   };
@@ -430,26 +444,40 @@ export function ChatPage() {
     if (!confirm('Voulez-vous vraiment supprimer cette conversation ?')) return;
 
     try {
-      // 1. D'abord supprimer tous les messages de la conversation
-      const { error: messagesError } = await supabase
-        .from('messages')
-        .delete()
-        .eq('conversation_id', id);
-
-      if (messagesError) throw messagesError;
-
-      // 2. Ensuite supprimer la conversation
+      // Delete the conversation - messages should cascade delete if ON DELETE CASCADE is set
+      // If not, we delete messages first
       const { error: conversationError } = await supabase
         .from('conversations')
         .delete()
         .eq('id', id);
 
-      if (conversationError) throw conversationError;
+      if (conversationError) {
+        // If cascade delete failed, try deleting messages first
+        console.log('Cascade delete failed, trying manual message deletion:', conversationError);
 
-      // 3. Mettre à jour l'état local
+        const { error: messagesError } = await supabase
+          .from('messages')
+          .delete()
+          .eq('conversation_id', id);
+
+        if (messagesError) {
+          console.error('Error deleting messages:', messagesError);
+          throw messagesError;
+        }
+
+        // Try deleting conversation again
+        const { error: retryError } = await supabase
+          .from('conversations')
+          .delete()
+          .eq('id', id);
+
+        if (retryError) throw retryError;
+      }
+
+      // Update local state
       setConversations(prev => prev.filter(c => c.id !== id));
 
-      // 4. Si c'était la conversation active, créer une nouvelle
+      // If it was the active conversation, create a new one
       if (currentConversationId === id) {
         handleNewChat();
       }
@@ -506,6 +534,49 @@ export function ChatPage() {
     setMessage(text);
     // Optionnel : Envoyer directement
     // handleSendMessage(text); 
+  };
+
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+    }
+  };
+
+  const handleCopyMessage = (text: string) => {
+    navigator.clipboard.writeText(text);
+    // Optionnel : Afficher un toast de confirmation
+  };
+
+  const handleEditMessage = (msg: { id: number; text: string }) => {
+    setEditingMessageId(msg.id);
+    setEditMessageContent(msg.text);
+  };
+
+  const handleUpdateMessage = async (id: number) => {
+    if (!editMessageContent.trim()) return;
+
+    // Optimistic update
+    setMessages(prev => prev.map(m => m.id === id ? { ...m, text: editMessageContent } : m));
+    setEditingMessageId(null);
+
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .update({ content: editMessageContent })
+        .eq('id', id);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error updating message:', error);
+      // Revert on error if needed, or show toast
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageId(null);
+    setEditMessageContent('');
   };
 
   const filteredConversations = conversations.filter(c =>
@@ -677,7 +748,7 @@ export function ChatPage() {
               {messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`p-3 rounded-lg max-w-[85%] text-base ${msg.sender === 'user'
+                  className={`group relative p-3 rounded-lg max-w-[85%] text-base ${msg.sender === 'user'
                     ? 'self-end bg-blue-500 text-white'
                     : 'self-start bg-gray-100 text-gray-800'
                     }`}
@@ -695,6 +766,14 @@ export function ChatPage() {
                           {msg.text}
                         </ReactMarkdown>
                       </div>
+                      {/* Copy button for AI messages */}
+                      <button
+                        onClick={() => handleCopyMessage(msg.text)}
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-white rounded hover:bg-gray-50"
+                        title="Copier"
+                      >
+                        <ClipboardDocumentIcon className="h-4 w-4 text-gray-600" />
+                      </button>
                       {/* Suggested questions */}
                       {msg.suggestions && msg.suggestions.length > 0 && (
                         <div className="mt-3 space-y-2">
@@ -718,37 +797,73 @@ export function ChatPage() {
                     </>
                   ) : (
                     <div className="flex flex-col gap-2">
-                      {msg.text && <div className="break-words whitespace-pre-wrap">{msg.text}</div>}
-                      {msg.attachments && msg.attachments.length > 0 && (
-                        <div className="space-y-2">
-                          {msg.attachments.map((attachment: any, idx: number) => (
-                            <div key={idx}>
-                              {attachment.type?.startsWith('image/') ? (
-                                attachment.url ? (
-                                  <img
-                                    src={attachment.url}
-                                    alt={attachment.name}
-                                    className="max-w-xs rounded-lg cursor-pointer hover:opacity-90"
-                                    onClick={() => window.open(attachment.url, '_blank')}
-                                  />
-                                ) : (
-                                  <div className="text-xs opacity-75">🖼️ {attachment.name}</div>
-                                )
-                              ) : (
-                                <a
-                                  href={attachment.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-2 text-sm bg-white/20 px-3 py-2 rounded-lg hover:bg-white/30 transition-colors"
-                                >
-                                  <PaperClipIcon className="h-4 w-4" />
-                                  <span className="truncate max-w-[200px]">{attachment.name}</span>
-                                  <span className="text-xs opacity-75">({(attachment.size / 1024).toFixed(1)} KB)</span>
-                                </a>
-                              )}
-                            </div>
-                          ))}
+                      {editingMessageId === msg.id ? (
+                        <div className="flex flex-col gap-2">
+                          <textarea
+                            value={editMessageContent}
+                            onChange={(e) => setEditMessageContent(e.target.value)}
+                            className="w-full p-2 border rounded bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                            rows={3}
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleUpdateMessage(msg.id)}
+                              className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+                            >
+                              Enregistrer
+                            </button>
+                            <button
+                              onClick={handleCancelEdit}
+                              className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 text-sm"
+                            >
+                              Annuler
+                            </button>
+                          </div>
                         </div>
+                      ) : (
+                        <>
+                          {msg.text && <div className="break-words whitespace-pre-wrap">{msg.text}</div>}
+                          {msg.attachments && msg.attachments.length > 0 && (
+                            <div className="space-y-2">
+                              {msg.attachments.map((attachment: any, idx: number) => (
+                                <div key={idx}>
+                                  {attachment.type?.startsWith('image/') ? (
+                                    attachment.url ? (
+                                      <img
+                                        src={attachment.url}
+                                        alt={attachment.name}
+                                        className="max-w-xs rounded-lg cursor-pointer hover:opacity-90"
+                                        onClick={() => window.open(attachment.url, '_blank')}
+                                      />
+                                    ) : (
+                                      <div className="text-xs opacity-75">🖼️ {attachment.name}</div>
+                                    )
+                                  ) : (
+                                    <a
+                                      href={attachment.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-2 text-sm bg-white/20 px-3 py-2 rounded-lg hover:bg-white/30 transition-colors"
+                                    >
+                                      <PaperClipIcon className="h-4 w-4" />
+                                      <span className="truncate max-w-[200px]">{attachment.name}</span>
+                                      <span className="text-xs opacity-75">({(attachment.size / 1024).toFixed(1)} KB)</span>
+                                    </a>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {/* Edit button for user messages */}
+                          <button
+                            onClick={() => handleEditMessage(msg)}
+                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-white/20 rounded hover:bg-white/30"
+                            title="Modifier"
+                          >
+                            <PencilIcon className="h-4 w-4" />
+                          </button>
+                        </>
                       )}
                     </div>
                   )}
@@ -756,8 +871,15 @@ export function ChatPage() {
                 </div>
               ))}
               {isLoading && (
-                <div className="self-start bg-gray-100 text-gray-800 p-3 rounded-lg">
+                <div className="self-start bg-gray-100 text-gray-800 p-3 rounded-lg flex items-center gap-3">
                   <span className="animate-pulse">L'IA réfléchit...</span>
+                  <button
+                    onClick={handleStopGeneration}
+                    className="p-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                    title="Arrêter"
+                  >
+                    <StopIcon className="h-4 w-4" />
+                  </button>
                 </div>
               )}
               <div ref={messagesEndRef} />

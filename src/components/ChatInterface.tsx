@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '../supabase';
-import { PaperAirplaneIcon } from '@heroicons/react/24/outline';
+import { PaperAirplaneIcon, ClipboardDocumentIcon, StopIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -22,6 +22,11 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
     const [isLoading, setIsLoading] = useState(false);
     const [conversationId, setConversationId] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // States for edit and stop
+    const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+    const [editMessageContent, setEditMessageContent] = useState('');
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -130,6 +135,9 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                 }));
                 messagesForEdge.push({ sender: 'user', text: userText });
 
+                // Create AbortController for stop functionality
+                abortControllerRef.current = new AbortController();
+
                 const edgeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-ai`;
                 const response = await fetch(edgeUrl, {
                     method: 'POST',
@@ -142,6 +150,7 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                         userContext,
                         subjectContext,
                     }),
+                    signal: abortControllerRef.current.signal,
                 });
 
                 if (!response.ok) {
@@ -251,13 +260,101 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
 
             } catch (error: any) {
                 console.error('Error in chat flow:', error);
-                setMessages((prev) => [
-                    ...prev,
-                    { id: Date.now() + 2, text: `Erreur: ${error.message}`, sender: 'ai' },
-                ]);
+
+                if (error.name === 'AbortError') {
+                    console.log('Generation stopped by user');
+                } else {
+                    setMessages((prev) => [
+                        ...prev,
+                        { id: Date.now() + 2, text: `Erreur: ${error.message}`, sender: 'ai' },
+                    ]);
+                }
             } finally {
                 setIsLoading(false);
+                abortControllerRef.current = null;
             }
+        }
+    };
+
+    const handleStopGeneration = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+            setIsLoading(false);
+        }
+    };
+
+    const handleCopyMessage = (text: string) => {
+        navigator.clipboard.writeText(text);
+    };
+
+    const handleEditMessage = (msg: { id: number; text: string }) => {
+        setEditingMessageId(msg.id);
+        setEditMessageContent(msg.text);
+    };
+
+    const handleUpdateMessage = async (id: number) => {
+        if (!editMessageContent.trim()) return;
+
+        setMessages(prev => prev.map(m => m.id === id ? { ...m, text: editMessageContent } : m));
+        setEditingMessageId(null);
+
+        try {
+            const { error } = await supabase
+                .from('messages')
+                .update({ content: editMessageContent })
+                .eq('id', id);
+
+            if (error) throw error;
+        } catch (error) {
+            console.error('Error updating message:', error);
+        }
+    };
+
+    const handleCancelEdit = () => {
+        setEditingMessageId(null);
+        setEditMessageContent('');
+    };
+
+    const handleDeleteConversation = async () => {
+        if (!conversationId || !confirm('Voulez-vous vraiment supprimer cette conversation ?')) return;
+
+        try {
+            // Try to delete conversation (should cascade to messages if configured)
+            const { error: conversationError } = await supabase
+                .from('conversations')
+                .delete()
+                .eq('id', conversationId);
+
+            if (conversationError) {
+                // If cascade failed, delete messages first
+                console.log('Cascade delete failed, trying manual message deletion:', conversationError);
+
+                const { error: messagesError } = await supabase
+                    .from('messages')
+                    .delete()
+                    .eq('conversation_id', conversationId);
+
+                if (messagesError) {
+                    console.error('Error deleting messages:', messagesError);
+                    throw messagesError;
+                }
+
+                // Retry conversation deletion
+                const { error: retryError } = await supabase
+                    .from('conversations')
+                    .delete()
+                    .eq('id', conversationId);
+
+                if (retryError) throw retryError;
+            }
+
+            setMessages([]);
+            setConversationId(null);
+            if (onClose) onClose();
+        } catch (error) {
+            console.error('Error deleting conversation:', error);
+            alert('Erreur lors de la suppression de la conversation.');
         }
     };
 
@@ -279,16 +376,27 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                         </p>
                     )}
                 </div>
-                {onClose && (
-                    <button
-                        onClick={onClose}
-                        className="p-1 hover:bg-gray-100 rounded-full"
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                )}
+                <div className="flex gap-2">
+                    {conversationId && (
+                        <button
+                            onClick={handleDeleteConversation}
+                            className="p-1 hover:bg-red-50 rounded-full text-red-600"
+                            title="Supprimer la conversation"
+                        >
+                            <TrashIcon className="h-5 w-5" />
+                        </button>
+                    )}
+                    {onClose && (
+                        <button
+                            onClick={onClose}
+                            className="p-1 hover:bg-gray-100 rounded-full"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Messages */}
@@ -296,7 +404,7 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                 {messages.map((msg) => (
                     <div
                         key={msg.id}
-                        className={`p-3 rounded-lg max-w-[85%] text-base ${msg.sender === 'user'
+                        className={`group relative p-3 rounded-lg max-w-[85%] text-base ${msg.sender === 'user'
                             ? 'self-end bg-blue-500 text-white'
                             : 'self-start bg-gray-100 text-gray-800'
                             }`}
@@ -314,6 +422,14 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                                         {msg.text}
                                     </ReactMarkdown>
                                 </div>
+                                {/* Copy button */}
+                                <button
+                                    onClick={() => handleCopyMessage(msg.text)}
+                                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-white rounded hover:bg-gray-50"
+                                    title="Copier"
+                                >
+                                    <ClipboardDocumentIcon className="h-4 w-4 text-gray-600" />
+                                </button>
                                 {/* Suggested questions */}
                                 {msg.suggestions && msg.suggestions.length > 0 && (
                                     <div className="mt-3 space-y-2">
@@ -335,13 +451,55 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                                 )}
                             </>
                         ) : (
-                            msg.text
+                            editingMessageId === msg.id ? (
+                                <div className="flex flex-col gap-2">
+                                    <textarea
+                                        value={editMessageContent}
+                                        onChange={(e) => setEditMessageContent(e.target.value)}
+                                        className="w-full p-2 border rounded bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                        rows={3}
+                                        autoFocus
+                                    />
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleUpdateMessage(msg.id)}
+                                            className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+                                        >
+                                            Enregistrer
+                                        </button>
+                                        <button
+                                            onClick={handleCancelEdit}
+                                            className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 text-sm"
+                                        >
+                                            Annuler
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    {msg.text}
+                                    <button
+                                        onClick={() => handleEditMessage(msg)}
+                                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-white/20 rounded hover:bg-white/30"
+                                        title="Modifier"
+                                    >
+                                        <PencilIcon className="h-4 w-4" />
+                                    </button>
+                                </>
+                            )
                         )}
                     </div>
                 ))}
                 {isLoading && (
-                    <div className="self-start bg-gray-100 text-gray-800 p-3 rounded-lg">
+                    <div className="self-start bg-gray-100 text-gray-800 p-3 rounded-lg flex items-center gap-3">
                         <span className="animate-pulse">Soukma réfléchit...</span>
+                        <button
+                            onClick={handleStopGeneration}
+                            className="p-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                            title="Arrêter"
+                        >
+                            <StopIcon className="h-4 w-4" />
+                        </button>
                     </div>
                 )}
                 <div ref={messagesEndRef} />
