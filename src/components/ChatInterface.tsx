@@ -164,6 +164,7 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
 
                 // Add a placeholder AI message
                 const aiMessageId = Date.now();
+                let fullAiResponse = '';
                 setMessages((prev) => [...prev, { id: aiMessageId, text: '', sender: 'ai' }]);
 
                 if (!reader) throw new Error('No reader available');
@@ -181,6 +182,33 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                             if (line.startsWith('data:')) {
                                 const data = line.slice(5).trim();
                                 if (data === '[DONE]') {
+                                    // Save user and AI messages to database
+                                    if (conversationId && userContext?.id) {
+                                        // Save user message
+                                        await supabase.from('messages').insert({
+                                            conversation_id: conversationId,
+                                            user_id: userContext.id,
+                                            content: userText,
+                                            is_ai: false
+                                        });
+
+                                        // Save AI message
+                                        const { data: savedAiMessage } = await supabase.from('messages').insert({
+                                            conversation_id: conversationId,
+                                            user_id: userContext.id,
+                                            content: fullAiResponse,
+                                            is_ai: true
+                                        }).select().single();
+
+                                        // Update with real ID
+                                        if (savedAiMessage) {
+                                            setMessages((prev) =>
+                                                prev.map((msg) =>
+                                                    msg.id === aiMessageId ? { ...msg, id: savedAiMessage.id } : msg
+                                                )
+                                            );
+                                        }
+                                    }
                                     setIsLoading(false);
                                     return;
                                 }
@@ -189,6 +217,7 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                                     const parsed = JSON.parse(data);
                                     const content = parsed.text;
                                     if (content) {
+                                        fullAiResponse += content;
                                         setMessages((prev) =>
                                             prev.map((msg) =>
                                                 msg.id === aiMessageId
@@ -224,29 +253,6 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
 
                             // Remove the [SUGGESTIONS] block from the displayed text
                             cleanText = lastMsg.text.replace(/\[SUGGESTIONS\]\s*\n[\s\S]*$/, '').trim();
-                        }
-
-                        // Save messages to database if we have a conversation ID
-                        if (conversationId && userContext?.id) {
-                            // Save user message
-                            supabase.from('messages').insert({
-                                conversation_id: conversationId,
-                                user_id: userContext.id,
-                                content: userText,
-                                is_ai: false
-                            }).then(({ error }) => {
-                                if (error) console.error('Error saving user message:', error);
-                            });
-
-                            // Save AI message
-                            supabase.from('messages').insert({
-                                conversation_id: conversationId,
-                                user_id: userContext.id,
-                                content: cleanText,
-                                is_ai: true
-                            }).then(({ error }) => {
-                                if (error) console.error('Error saving AI message:', error);
-                            });
                         }
 
                         return prev.map(msg =>
@@ -423,13 +429,15 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                                     </ReactMarkdown>
                                 </div>
                                 {/* Copy button */}
-                                <button
-                                    onClick={() => handleCopyMessage(msg.text)}
-                                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-white rounded hover:bg-gray-50"
-                                    title="Copier"
-                                >
-                                    <ClipboardDocumentIcon className="h-4 w-4 text-gray-600" />
-                                </button>
+                                <div className="flex justify-end mt-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                                    <button
+                                        onClick={() => handleCopyMessage(msg.text)}
+                                        className="p-1.5 bg-white rounded hover:bg-gray-50 shadow-sm border border-gray-200"
+                                        title="Copier"
+                                    >
+                                        <ClipboardDocumentIcon className="h-3.5 w-3.5 text-gray-600" />
+                                    </button>
+                                </div>
                                 {/* Suggested questions */}
                                 {msg.suggestions && msg.suggestions.length > 0 && (
                                     <div className="mt-3 space-y-2">
@@ -478,30 +486,28 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                             ) : (
                                 <>
                                     {msg.text}
-                                    <button
-                                        onClick={() => handleEditMessage(msg)}
-                                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-white/20 rounded hover:bg-white/30"
-                                        title="Modifier"
-                                    >
-                                        <PencilIcon className="h-4 w-4" />
-                                    </button>
+                                    <div className="flex gap-1 mt-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                                        <button
+                                            onClick={() => handleEditMessage(msg)}
+                                            className="p-1.5 bg-white/90 rounded hover:bg-white shadow-sm border border-white/50"
+                                            title="Modifier"
+                                        >
+                                            <PencilIcon className="h-3.5 w-3.5 text-blue-600" />
+                                        </button>
+                                        <button
+                                            onClick={() => handleCopyMessage(msg.text)}
+                                            className="p-1.5 bg-white/90 rounded hover:bg-white shadow-sm border border-white/50"
+                                            title="Copier"
+                                        >
+                                            <ClipboardDocumentIcon className="h-3.5 w-3.5 text-blue-600" />
+                                        </button>
+                                    </div>
                                 </>
                             )
                         )}
                     </div>
                 ))}
-                {isLoading && (
-                    <div className="self-start bg-gray-100 text-gray-800 p-3 rounded-lg flex items-center gap-3">
-                        <span className="animate-pulse">Soukma réfléchit...</span>
-                        <button
-                            onClick={handleStopGeneration}
-                            className="p-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-                            title="Arrêter"
-                        >
-                            <StopIcon className="h-4 w-4" />
-                        </button>
-                    </div>
-                )}
+
                 <div ref={messagesEndRef} />
             </div>
 
@@ -524,13 +530,23 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                         onKeyPress={handleKeyPress}
                         disabled={isLoading}
                     />
-                    <button
-                        onClick={() => handleSendMessage()}
-                        disabled={isLoading || !message.trim()}
-                        className="absolute right-2 p-2 rounded-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                    >
-                        <PaperAirplaneIcon className="h-5 w-5 text-white" />
-                    </button>
+                    {isLoading ? (
+                        <button
+                            onClick={handleStopGeneration}
+                            className="absolute right-2 p-2 rounded-full bg-red-500 hover:bg-red-600 text-white"
+                            title="Arrêter la génération"
+                        >
+                            <StopIcon className="h-5 w-5" />
+                        </button>
+                    ) : (
+                        <button
+                            onClick={() => handleSendMessage()}
+                            disabled={!message.trim()}
+                            className="absolute right-2 p-2 rounded-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white"
+                        >
+                            <PaperAirplaneIcon className="h-5 w-5" />
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

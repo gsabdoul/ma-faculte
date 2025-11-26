@@ -334,6 +334,7 @@ export function ChatPage() {
 
         // Add a placeholder AI message
         const aiMessageId = Date.now();
+        let fullAiResponse = '';
         setMessages((prev) => [...prev, { id: aiMessageId, text: '', sender: 'ai' }]);
 
         if (!reader) throw new Error('No reader available');
@@ -351,6 +352,24 @@ export function ChatPage() {
               if (line.startsWith('data:')) {
                 const data = line.slice(5).trim();
                 if (data === '[DONE]') {
+                  // Save AI response to database
+                  const { data: savedAiMessage } = await supabase.from('messages').insert({
+                    conversation_id: conversationId,
+                    user_id: userId,
+                    content: fullAiResponse,
+                    is_ai: true
+                  }).select().single();
+
+                  // Update with real ID from database
+                  if (savedAiMessage) {
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === aiMessageId
+                          ? { ...msg, id: savedAiMessage.id }
+                          : msg
+                      )
+                    );
+                  }
                   setIsLoading(false);
                   return;
                 }
@@ -359,6 +378,7 @@ export function ChatPage() {
                   const parsed = JSON.parse(data);
                   const content = parsed.text;
                   if (content) {
+                    fullAiResponse += content;
                     setMessages((prev) =>
                       prev.map((msg) =>
                         msg.id === aiMessageId
@@ -557,20 +577,186 @@ export function ChatPage() {
   const handleUpdateMessage = async (id: number) => {
     if (!editMessageContent.trim()) return;
 
-    // Optimistic update
-    setMessages(prev => prev.map(m => m.id === id ? { ...m, text: editMessageContent } : m));
-    setEditingMessageId(null);
+    // Find the index of the message being edited
+    const messageIndex = messages.findIndex(m => m.id === id);
+    if (messageIndex === -1) return;
 
+    // Delete all messages after this one (including AI responses)
+    const messagesToKeep = messages.slice(0, messageIndex);
+
+    setEditingMessageId(null);
+    setEditMessageContent('');
+    setIsLoading(true);
+
+    // Update the database
     try {
-      const { error } = await supabase
+      // Update the message content
+      const { error: updateError } = await supabase
         .from('messages')
         .update({ content: editMessageContent })
         .eq('id', id);
 
-      if (error) throw error;
-    } catch (error) {
+      if (updateError) throw updateError;
+
+      // Delete all messages after this one from the database
+      const messagesToDelete = messages.slice(messageIndex + 1);
+      if (messagesToDelete.length > 0) {
+        const idsToDelete = messagesToDelete.map(m => m.id);
+        const { error: deleteError } = await supabase
+          .from('messages')
+          .delete()
+          .in('id', idsToDelete);
+
+        if (deleteError) throw deleteError;
+      }
+
+      // Update local state with only messages up to the edited one
+      const updatedMessages = [...messagesToKeep, {
+        id,
+        text: editMessageContent,
+        sender: 'user' as const,
+        attachments: messages[messageIndex].attachments
+      }];
+      setMessages(updatedMessages);
+
+      // Directly regenerate AI response
+      const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+      if (!apiKey) {
+        throw new Error("La clé API OpenRouter n'est pas configurée.");
+      }
+
+      // Build messages for AI
+      const filteredMessages = updatedMessages.filter((m) => {
+        if (m.sender === 'ai') {
+          return m.text && m.text.trim() !== '';
+        }
+        return true;
+      });
+
+      const messagesForEdge = filteredMessages.map((msg) => ({
+        sender: msg.sender,
+        text: msg.text,
+      }));
+
+      // Create AbortController
+      abortControllerRef.current = new AbortController();
+
+      const edgeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-ai`;
+      const response = await fetch(edgeUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          messages: messagesForEdge,
+          userContext,
+          subjectContext,
+        }),
+        signal: abortControllerRef.current.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Edge Function Error ${response.status}: ${errorText}`);
+      }
+
+      // Stream the response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      const aiMessageId = Date.now();
+      let fullAiResponse = '';
+      setMessages((prev) => [...prev, { id: aiMessageId, text: '', sender: 'ai' }]);
+
+      if (!reader) throw new Error('No reader available');
+
+      let done = false;
+      while (!done) {
+        const { value, done: doneReading } = await reader.read();
+        done = doneReading;
+
+        if (value) {
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data:')) {
+              const data = line.slice(5).trim();
+              if (data === '[DONE]') {
+                // Save AI response to database
+                const { data: savedAiMessage } = await supabase.from('messages').insert({
+                  conversation_id: currentConversationId,
+                  user_id: userId,
+                  content: fullAiResponse,
+                  is_ai: true
+                }).select().single();
+
+                if (savedAiMessage) {
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === aiMessageId ? { ...msg, id: savedAiMessage.id } : msg
+                    )
+                  );
+                }
+                setIsLoading(false);
+                return;
+              }
+
+              try {
+                const parsed = JSON.parse(data);
+                const content = parsed.text;
+                if (content) {
+                  fullAiResponse += content;
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === aiMessageId ? { ...msg, text: msg.text + content } : msg
+                    )
+                  );
+                }
+              } catch (err) {
+                // Ignore parse errors
+              }
+            }
+          }
+        }
+      }
+
+      // Parse suggestions
+      setMessages((prev) => {
+        const lastMsg = prev[prev.length - 1];
+        if (lastMsg && lastMsg.id === aiMessageId && lastMsg.text) {
+          const suggestionMatch = lastMsg.text.match(/\[SUGGESTIONS\]\s*\n([\s\S]*?)(?:\n\n|$)/);
+          if (suggestionMatch) {
+            const suggestionsText = suggestionMatch[1];
+            const suggestions = suggestionsText
+              .split('\n')
+              .filter(line => line.trim())
+              .map(line => line.replace(/^\d+\.\s*/, '').trim())
+              .filter(q => q.length > 0)
+              .slice(0, 3);
+
+            const cleanText = lastMsg.text.replace(/\[SUGGESTIONS\]\s*\n[\s\S]*$/, '').trim();
+
+            return prev.map(msg =>
+              msg.id === aiMessageId ? { ...msg, text: cleanText, suggestions } : msg
+            );
+          }
+        }
+        return prev;
+      });
+
+    } catch (error: any) {
       console.error('Error updating message:', error);
-      // Revert on error if needed, or show toast
+      if (error.name !== 'AbortError') {
+        setMessages((prev) => [
+          ...prev,
+          { id: Date.now() + 2, text: `Erreur: ${error.message}`, sender: 'ai' },
+        ]);
+      }
+    } finally {
+      setIsLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -584,7 +770,7 @@ export function ChatPage() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] bg-white relative">
+    <div className="flex min-h-[calc(100vh-5rem)] lg:h-[calc(100vh-5rem)] bg-white relative">
       {/* Panneau latéral pour l'historique */}
       <div className={`
         fixed inset-y-0 left-0 z-20 w-80 bg-white shadow-lg transform transition-transform duration-300 ease-in-out
@@ -767,13 +953,15 @@ export function ChatPage() {
                         </ReactMarkdown>
                       </div>
                       {/* Copy button for AI messages */}
-                      <button
-                        onClick={() => handleCopyMessage(msg.text)}
-                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-white rounded hover:bg-gray-50"
-                        title="Copier"
-                      >
-                        <ClipboardDocumentIcon className="h-4 w-4 text-gray-600" />
-                      </button>
+                      <div className="flex justify-end mt-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleCopyMessage(msg.text)}
+                          className="p-1.5 bg-white rounded hover:bg-gray-50 shadow-sm border border-gray-200"
+                          title="Copier"
+                        >
+                          <ClipboardDocumentIcon className="h-3.5 w-3.5 text-gray-600" />
+                        </button>
+                      </div>
                       {/* Suggested questions */}
                       {msg.suggestions && msg.suggestions.length > 0 && (
                         <div className="mt-3 space-y-2">
@@ -855,14 +1043,23 @@ export function ChatPage() {
                               ))}
                             </div>
                           )}
-                          {/* Edit button for user messages */}
-                          <button
-                            onClick={() => handleEditMessage(msg)}
-                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-white/20 rounded hover:bg-white/30"
-                            title="Modifier"
-                          >
-                            <PencilIcon className="h-4 w-4" />
-                          </button>
+                          {/* Edit and Copy buttons for user messages */}
+                          <div className="flex gap-1 mt-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => handleEditMessage(msg)}
+                              className="p-1.5 bg-white/90 rounded hover:bg-white shadow-sm border border-white/50"
+                              title="Modifier"
+                            >
+                              <PencilIcon className="h-3.5 w-3.5 text-blue-600" />
+                            </button>
+                            <button
+                              onClick={() => handleCopyMessage(msg.text)}
+                              className="p-1.5 bg-white/90 rounded hover:bg-white shadow-sm border border-white/50"
+                              title="Copier"
+                            >
+                              <ClipboardDocumentIcon className="h-3.5 w-3.5 text-blue-600" />
+                            </button>
+                          </div>
                         </>
                       )}
                     </div>
@@ -870,18 +1067,6 @@ export function ChatPage() {
 
                 </div>
               ))}
-              {isLoading && (
-                <div className="self-start bg-gray-100 text-gray-800 p-3 rounded-lg flex items-center gap-3">
-                  <span className="animate-pulse">L'IA réfléchit...</span>
-                  <button
-                    onClick={handleStopGeneration}
-                    className="p-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-                    title="Arrêter"
-                  >
-                    <StopIcon className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
               <div ref={messagesEndRef} />
             </>
           )}
@@ -963,16 +1148,26 @@ export function ChatPage() {
                 <PaperClipIcon className="h-5 w-5" />
               </button>
             </div>
-            <button
-              onClick={handleSendMessage}
-              className={`ml-2 p-2 rounded-full text-white ${!message.trim() && attachedFiles.length === 0
-                ? 'bg-blue-300 cursor-not-allowed'
-                : 'bg-blue-500 hover:bg-blue-600'
-                }`}
-              disabled={!message.trim() && attachedFiles.length === 0}
-            >
-              <PaperAirplaneIcon className="h-6 w-6" />
-            </button>
+            {isLoading ? (
+              <button
+                onClick={handleStopGeneration}
+                className="ml-2 p-2 rounded-full bg-red-500 hover:bg-red-600 text-white"
+                title="Arrêter la génération"
+              >
+                <StopIcon className="h-6 w-6" />
+              </button>
+            ) : (
+              <button
+                onClick={handleSendMessage}
+                className={`ml-2 p-2 rounded-full text-white ${!message.trim() && attachedFiles.length === 0
+                  ? 'bg-blue-300 cursor-not-allowed'
+                  : 'bg-blue-500 hover:bg-blue-600'
+                  }`}
+                disabled={!message.trim() && attachedFiles.length === 0}
+              >
+                <PaperAirplaneIcon className="h-6 w-6" />
+              </button>
+            )}
           </div>
         </div>
       </div>
