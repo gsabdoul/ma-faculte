@@ -1,8 +1,14 @@
 // @ts-ignore
 declare const Deno: any;
 
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY');
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const VOYAGE_API_KEY = Deno.env.get('VOYAGE_API_KEY');
+const VOYAGE_API_URL = 'https://api.voyageai.com/v1/embeddings';
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -16,10 +22,9 @@ Deno.serve(async (req: Request) => {
     }
 
     try {
-        // 1. Check API Key
-        if (!OPENROUTER_API_KEY) {
-            throw new Error('Configuration Error: OPENROUTER_API_KEY is missing in secrets.');
-        }
+        // 1. Check API Keys
+        if (!OPENROUTER_API_KEY) throw new Error('Missing OPENROUTER_API_KEY');
+        if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('Missing Supabase credentials');
 
         // 2. Parse Body
         let body;
@@ -34,27 +39,75 @@ Deno.serve(async (req: Request) => {
             throw new Error('Invalid payload: messages array is required');
         }
 
-        // 3. Build System Prompt with Application Context
+        // 3. RAG: Search for relevant context if subject is present
+        let ragContext = "";
+        let sourcesMetadata = [];
+
+        if (subjectContext && subjectContext.id && VOYAGE_API_KEY) {
+            try {
+                // Get the last user message for search query
+                const lastUserMessage = messages.filter((m: any) => m.sender === 'user').pop();
+
+                if (lastUserMessage) {
+                    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+                    // Generate embedding with Voyage AI
+                    const voyageResponse = await fetch(VOYAGE_API_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${VOYAGE_API_KEY}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            input: lastUserMessage.text,
+                            model: 'voyage-3-lite',
+                        })
+                    });
+
+                    if (!voyageResponse.ok) {
+                        throw new Error('Voyage AI embedding failed');
+                    }
+
+                    const voyageData = await voyageResponse.json();
+                    const embedding = voyageData.data[0].embedding;
+
+                    // Search similar chunks
+                    const { data: chunks, error } = await supabase.rpc('search_document_chunks', {
+                        query_embedding: embedding,
+                        match_sujet_id: subjectContext.id,
+                        match_threshold: 0.5, // Lower threshold to get more results
+                        match_count: 5
+                    });
+
+                    if (error) {
+                        console.error('Error searching chunks:', error);
+                    } else if (chunks && chunks.length > 0) {
+                        console.log(`Found ${chunks.length} relevant chunks`);
+
+                        ragContext = chunks.map((c: any) => `
+[Source: Page ${c.metadata.page}, Section "${c.metadata.section}"]
+${c.content}
+`).join('\n\n');
+
+                        sourcesMetadata = chunks.map((c: any) => ({
+                            page: c.metadata.page,
+                            section: c.metadata.section
+                        }));
+                    }
+                }
+            } catch (err) {
+                console.error('RAG Error:', err);
+                // Continue without RAG if error
+            }
+        }
+
+        // 4. Build System Prompt with Application Context
         let systemInstruction = `Tu es "Soukma" (qui signifie "demande-moi" en langue mooré), l'assistant pédagogique intelligent de l'application "Ma faculté".
 
 ## Ton Identité
 - Nom : Soukma
 - Créateur : Savadogo Abdoul Guélilou
 - Mission : Aider les étudiants universitaires au Burkina Faso
-
-## À propos de l'application "Ma faculté"
-Ma faculté est une plateforme éducative destinée aux étudiants universitaires au Burkina Faso. L'application permet d'accéder à:
-- **Anciens sujets d'examens** organisés par module et université (fichiers PDF)
-- **Livres académiques** par module (fichiers PDF avec couvertures)
-- **Drives partagés** contenant des ressources pédagogiques
-- **Chat IA** pour assistance académique personnalisée
-
-## Structure de l'application
-L'application est organisée autour de :
-- **Universités** : Établissements d'enseignement supérieur (ex: Université Joseph Ki-Zerbo)
-- **Facultés** : Divisions académiques (ex: Médecine, Droit, Sciences)
-- **Niveaux** : Années d'étude (ex: 1ère année, 2ème année, Licence, Master)
-- **Modules** : Matières/cours enseignés (peuvent être gratuits ou premium)
 
 ## RÈGLE CRITIQUE - ANTI-HALLUCINATION
 Tu ne dois JAMAIS inventer de contenu qui n'existe pas dans le contexte fourni.
@@ -89,23 +142,28 @@ Tu ne dois JAMAIS inventer de contenu qui n'existe pas dans le contexte fourni.
             systemInstruction += `\n\n## Contexte du document actuel
 L'étudiant consulte actuellement le document : "${subjectContext.title}".`;
 
-            if (subjectContext.content) {
-                systemInstruction += `\n\n## Contenu du PDF (extrait)
-Voici le texte extrait du document PDF que l'étudiant consulte. Utilise ce contenu pour répondre précisément à ses questions :
+            if (ragContext) {
+                systemInstruction += `\n\n## Contenu PERTINENT du PDF (RAG)
+Voici les extraits les plus pertinents du document trouvés pour la question de l'étudiant. Utilise ces extraits pour formuler ta réponse.
+CITE TES SOURCES en mentionnant les numéros de page (ex: "Selon la page 5...").
 
-${subjectContext.content}
+${ragContext}
 
-**RAPPEL** : Réponds en te basant UNIQUEMENT sur ce contenu pour les questions spécifiques au document.`;
+**INSTRUCTION IMPORTANTE** : Base ta réponse PRINCIPALEMENT sur ces extraits.`;
+            } else if (subjectContext.content) {
+                // Fallback to full content if available and no RAG results (or RAG failed)
+                // Truncate if too long to avoid token limits
+                const truncatedContent = subjectContext.content.substring(0, 20000);
+                systemInstruction += `\n\n## Contenu du PDF (extrait global)
+Voici le début du texte extrait du document PDF :
+${truncatedContent}
+... (contenu tronqué)`;
             } else {
-                systemInstruction += `\n\n**Note** : Le contenu du PDF n'a pas pu être extrait. Guide l'étudiant vers la lecture directe du document pour les détails spécifiques.`;
-            }
-
-            if (subjectContext.url) {
-                systemInstruction += ` URL du document : ${subjectContext.url}`;
+                systemInstruction += `\n\n**Note** : Aucun contenu extrait disponible pour ce document.`;
             }
         }
 
-        // 4. Format Messages for OpenRouter (OpenAI compatible)
+        // 5. Format Messages for OpenRouter
         const openRouterMessages = [
             { role: "system", content: systemInstruction },
             ...messages.map((msg: any) => ({
@@ -114,7 +172,7 @@ ${subjectContext.content}
             }))
         ];
 
-        // 5. Call OpenRouter API with streaming enabled
+        // 6. Call OpenRouter API
         const response = await fetch(OPENROUTER_URL, {
             method: 'POST',
             headers: {
@@ -124,10 +182,10 @@ ${subjectContext.content}
                 'X-Title': 'Ma Faculte',
             },
             body: JSON.stringify({
-                model: "x-ai/grok-4.1-fast:free",
+                model: "x-ai/grok-4.1-fast:free", // Or google/gemini-flash-1.5
                 messages: openRouterMessages,
                 stream: true,
-                temperature: 0.7,
+                temperature: 0.5, // Lower temperature for more factual answers
             }),
         });
 
@@ -137,11 +195,18 @@ ${subjectContext.content}
             throw new Error(`OpenRouter API Error: ${response.status} - ${errorText}`);
         }
 
-        // 6. Stream the response back to the client
+        // 7. Stream the response
         const stream = new ReadableStream({
             async start(controller) {
                 const reader = response.body?.getReader();
                 const decoder = new TextDecoder();
+
+                // Send sources metadata first if available
+                if (sourcesMetadata.length > 0) {
+                    // We could send a special event for sources, but for now let's just let the AI cite them in text
+                    // Or we could append a sources block at the end if the AI doesn't.
+                    // For this prototype, we rely on the AI following instructions to cite pages.
+                }
 
                 if (!reader) {
                     controller.close();
@@ -166,21 +231,15 @@ ${subjectContext.content}
                                     let content = parsed.choices?.[0]?.delta?.content;
 
                                     if (content) {
-                                        // Filter out unwanted tokens
                                         content = content.replace(/<s>/g, '').replace(/<\/s>/g, '');
-
                                         if (content) {
-                                            // Send SSE formatted data
                                             controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ text: content })}\n\n`));
                                         }
                                     }
-                                } catch (e) {
-                                    // Skip invalid JSON
-                                }
+                                } catch (e) { }
                             }
                         }
                     }
-                    // Send [DONE] at the end
                     controller.enqueue(new TextEncoder().encode(`data: [DONE]\n\n`));
                 } catch (error) {
                     console.error('Streaming error:', error);

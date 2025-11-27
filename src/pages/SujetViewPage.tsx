@@ -5,6 +5,8 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import { Modal } from '../components/ui/Modal';
 import { ChatInterface } from '../components/ChatInterface';
 import { supabase } from '../supabase';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -36,6 +38,7 @@ export function SujetViewPage() {
     const [isResizingChat, setIsResizingChat] = useState(false);
     const [pdfTextContent, setPdfTextContent] = useState<string | null>(null);
     const [isExtractingText, setIsExtractingText] = useState(false);
+    const [markdownContent, setMarkdownContent] = useState<string | null>(null);
 
     // Floating button state - sticky to right edge
     const [buttonPosition, setButtonPosition] = useState({ y: window.innerHeight / 2 });
@@ -212,7 +215,40 @@ export function SujetViewPage() {
 
                     const pdfUrl = (raw as any).fichier_url || (raw as any).pdfUrl || null;
                     (raw as any).pdfUrlResolved = resolveDriveUrl(pdfUrl);
-                    setPdfSource(resolveDriveUrl(pdfUrl) || null);
+
+                    // Check if it's a markdown file
+                    const isMarkdownOrJson = (url: string) => {
+                        if (!url) return false;
+                        const lowerUrl = url.toLowerCase();
+                        // Remove query parameters for extension check
+                        const urlPath = lowerUrl.split('?')[0];
+                        return urlPath.endsWith('.md') ||
+                            urlPath.endsWith('.markdown') ||
+                            urlPath.endsWith('.json');
+                    };
+
+                    if (pdfUrl && isMarkdownOrJson(pdfUrl)) {
+                        try {
+                            const contentRes = await fetch(resolveDriveUrl(pdfUrl) || pdfUrl);
+                            if (contentRes.ok) {
+                                if (pdfUrl.endsWith('.json')) {
+                                    const json = await contentRes.json();
+                                    if (json.content) {
+                                        setMarkdownContent(json.content);
+                                    } else if (json.chunks && Array.isArray(json.chunks)) {
+                                        setMarkdownContent(json.chunks.map((c: any) => c.content).join('\n\n'));
+                                    }
+                                } else {
+                                    const text = await contentRes.text();
+                                    setMarkdownContent(text);
+                                }
+                            }
+                        } catch (err) {
+                            console.error('Failed to fetch markdown content:', err);
+                        }
+                    } else {
+                        setPdfSource(resolveDriveUrl(pdfUrl) || null);
+                    }
                 }
                 setSubject(raw);
             } catch (err: any) {
@@ -417,24 +453,58 @@ export function SujetViewPage() {
                     }}
                 >
                     <div ref={containerRef} className="flex flex-col items-center p-4 space-y-4 min-h-full">
-                        <Document
-                            file={pdfSource || subject.pdfUrlResolved || subject.fichier_url || subject.pdfUrl}
-                            onLoadSuccess={onDocumentLoadSuccess}
-                            onLoadError={handleDocumentError}
-                            loading={<div className="text-center p-8">Chargement du sujet...</div>}
-                            error={<div className="text-center p-8 text-red-500">Erreur de chargement du PDF.</div>}
-                        >
-                            {numPages && Array.from(new Array(numPages), (_, index) => (
-                                <div key={`page_${index + 1}`} className="mb-4 shadow-lg">
-                                    <Page
-                                        pageNumber={index + 1}
-                                        renderTextLayer={false}
-                                        width={containerWidth ? Math.floor(containerWidth * 0.9) : undefined}
-                                        scale={zoom}
-                                    />
+                        {markdownContent ? (
+                            <div
+                                className="w-full max-w-4xl bg-white rounded-lg shadow-lg p-8"
+                                style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}
+                            >
+                                <div className="prose prose-lg max-w-none
+                                    [&>h1]:text-2xl [&>h1]:font-bold [&>h1]:mb-4 [&>h1]:mt-6
+                                    [&>h2]:text-xl [&>h2]:font-bold [&>h2]:mb-3 [&>h2]:mt-5
+                                    [&>h3]:text-lg [&>h3]:font-bold [&>h3]:mb-2 [&>h3]:mt-4
+                                    [&>h4]:text-base [&>h4]:font-bold [&>h4]:mb-2 [&>h4]:mt-3
+                                    [&>h5]:text-base [&>h5]:font-bold [&>h5]:mb-2 [&>h5]:mt-3
+                                    [&>h6]:text-base [&>h6]:font-bold [&>h6]:mb-2 [&>h6]:mt-3
+                                    [&>p]:mb-4 [&>p]:leading-7 [&>p]:text-base
+                                    [&>ul]:list-disc [&>ul]:ml-6 [&>ul]:mb-4 [&>ul]:text-base
+                                    [&>ol]:list-decimal [&>ol]:ml-6 [&>ol]:mb-4 [&>ol]:text-base
+                                    [&>li]:mb-2 [&>li]:text-base
+                                    [&>blockquote]:border-l-4 [&>blockquote]:border-gray-300 [&>blockquote]:pl-4 [&>blockquote]:italic [&>blockquote]:my-4 [&>blockquote]:text-base
+                                    [&>code]:bg-gray-100 [&>code]:px-1 [&>code]:py-0.5 [&>code]:rounded [&>code]:text-sm
+                                    [&>pre]:bg-gray-100 [&>pre]:p-4 [&>pre]:rounded [&>pre]:overflow-x-auto [&>pre]:mb-4 [&>pre]:text-sm
+                                    [&>table]:w-full [&>table]:mb-4 [&>table]:border-collapse [&>table]:text-base
+                                    [&>table>thead>tr>th]:border [&>table>thead>tr>th]:border-gray-300 [&>table>thead>tr>th]:bg-gray-100 [&>table>thead>tr>th]:p-2 [&>table>thead>tr>th]:font-bold
+                                    [&>table>tbody>tr>td]:border [&>table>tbody>tr>td]:border-gray-300 [&>table>tbody>tr>td]:p-2
+                                    [&>hr]:my-8 [&>hr]:border-gray-300
+                                    [&>a]:text-blue-600 [&>a]:underline [&>a]:hover:text-blue-800
+                                    [&>strong]:font-bold
+                                    [&>em]:italic
+                                ">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                        {markdownContent}
+                                    </ReactMarkdown>
                                 </div>
-                            ))}
-                        </Document>
+                            </div>
+                        ) : (
+                            <Document
+                                file={pdfSource || subject.pdfUrlResolved || subject.fichier_url || subject.pdfUrl}
+                                onLoadSuccess={onDocumentLoadSuccess}
+                                onLoadError={handleDocumentError}
+                                loading={<div className="text-center p-8">Chargement du sujet...</div>}
+                                error={<div className="text-center p-8 text-red-500">Erreur de chargement du PDF.</div>}
+                            >
+                                {numPages && Array.from(new Array(numPages), (_, index) => (
+                                    <div key={`page_${index + 1}`} className="mb-4 shadow-lg">
+                                        <Page
+                                            pageNumber={index + 1}
+                                            renderTextLayer={false}
+                                            width={containerWidth ? Math.floor(containerWidth * 0.9) : undefined}
+                                            scale={zoom}
+                                        />
+                                    </div>
+                                ))}
+                            </Document>
+                        )}
                     </div>
                 </div>
             </div>
@@ -479,7 +549,7 @@ export function SujetViewPage() {
                                 id: subject.id,
                                 title: subject.titre || subject.title,
                                 url: pdfSource || subject.pdfUrlResolved || subject.fichier_url || subject.pdfUrl,
-                                content: pdfTextContent || undefined
+                                content: markdownContent || pdfTextContent || undefined
                             }}
                             userContext={userContext}
                             onClose={() => setIsChatOpen(false)}
@@ -532,7 +602,7 @@ export function SujetViewPage() {
                                     id: subject.id,
                                     title: subject.titre || subject.title,
                                     url: pdfSource || subject.pdfUrlResolved || subject.fichier_url || subject.pdfUrl,
-                                    content: pdfTextContent || undefined
+                                    content: markdownContent || pdfTextContent || undefined
                                 }}
                                 userContext={userContext}
                             />

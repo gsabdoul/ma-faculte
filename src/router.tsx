@@ -38,6 +38,7 @@ import { ManageNotifications } from './pages/admin/ManageNotifications';
 import { ManageFacultiesPage } from './pages/admin/ManageFacultiesPage';
 import { ManageSignalementsPage } from './pages/admin/ManageSignalementsPage';
 import { ManageCarouselPage } from './pages/admin/ManageCarouselPage';
+import { ManageKnowledgePage } from './pages/admin/ManageKnowledgePage';
 
 
 export const router = createHashRouter([
@@ -118,6 +119,7 @@ export const router = createHashRouter([
                     { path: "signalements", element: <ManageSignalementsPage /> },
                     { path: "faculties", element: <ManageFacultiesPage /> },
                     { path: "carousel", element: <ManageCarouselPage /> },
+                    { path: "knowledge", element: <ManageKnowledgePage /> },
                 ]
             }
         ]

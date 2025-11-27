@@ -8,6 +8,7 @@ import {
     ChevronLeftIcon,
     ChevronRightIcon,
     EyeIcon,
+    SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { supabase } from '../../supabase';
 import ReactMarkdown from 'react-markdown';
@@ -128,6 +129,40 @@ export function ManageSubjectsPage() {
     // État pour la modale de suppression
     const [subjectToDelete, setSubjectToDelete] = useState<SubjectInfo | null>(null);
 
+    // État pour le traitement RAG
+    const [processingSubjectId, setProcessingSubjectId] = useState<string | null>(null);
+
+    const handleProcessRAG = async (subject: SubjectInfo) => {
+        if (!subject.pdfUrl || subject.pdfUrl === '#') {
+            alert("Ce sujet n'a pas de fichier valide.");
+            return;
+        }
+
+        if (!confirm(`Voulez-vous traiter le document "${subject.title}" pour l'IA ? Cela peut prendre quelques minutes.`)) {
+            return;
+        }
+
+        try {
+            setProcessingSubjectId(subject.id);
+
+            const { data, error } = await supabase.functions.invoke('process-document', {
+                body: {
+                    document_url: subject.pdfUrl,
+                    sujet_id: subject.id
+                }
+            });
+
+            if (error) throw error;
+
+            alert(`Traitement réussi ! ${data.message}`);
+        } catch (error: any) {
+            console.error('Error processing document:', error);
+            alert(`Erreur lors du traitement : ${error.message || 'Erreur inconnue'}`);
+        } finally {
+            setProcessingSubjectId(null);
+        }
+    };
+
     const universitiesByModule: Record<string, University[]> = useMemo(() => {
         // In the current schema universites are not directly linked to modules,
         // so we expose the full list for every module to keep the UI working.
@@ -169,8 +204,12 @@ export function ManageSubjectsPage() {
         const file = e.target.files?.[0];
         if (file) {
             // Validations côté client
-            if (file.type !== 'application/pdf') {
-                setFormError('Le fichier doit être un PDF.');
+            const validTypes = ['application/pdf', 'application/json', 'text/markdown', 'text/plain'];
+            const validExtensions = ['.pdf', '.json', '.md', '.markdown'];
+            const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+
+            if (!validTypes.includes(file.type) && !validExtensions.includes(fileExtension)) {
+                setFormError('Le fichier doit être un PDF, JSON ou Markdown (.md).');
                 return;
             }
             if (file.size > MAX_PDF_SIZE) {
@@ -204,7 +243,7 @@ export function ManageSubjectsPage() {
                     .storage
                     .from('sujets')
                     .upload(objectPath, activeSubject.file, {
-                        contentType: 'application/pdf',
+                        contentType: activeSubject.file.type,
                         upsert: false,
                     });
                 if (uploadRes.error) throw uploadRes.error;
@@ -400,6 +439,14 @@ export function ManageSubjectsPage() {
                                 <td className="py-3 px-4 text-gray-500 font-mono">{subject.fileSize}</td>
                                 <td className="py-3 px-4 whitespace-nowrap">
                                     <Link to={`/sujets/${subject.id}`} className="text-gray-500 hover:text-green-500 p-2" title="Voir le sujet"><EyeIcon className="h-5 w-5" /></Link>
+                                    <button
+                                        onClick={() => handleProcessRAG(subject)}
+                                        disabled={!!processingSubjectId}
+                                        className={`p-2 ${processingSubjectId === subject.id ? 'text-yellow-500 animate-spin' : 'text-gray-500 hover:text-purple-500'}`}
+                                        title="Traiter pour l'IA (RAG)"
+                                    >
+                                        <SparklesIcon className="h-5 w-5" />
+                                    </button>
                                     <button onClick={() => openModalForEdit(subject)} className="text-gray-500 hover:text-blue-500 p-2" title="Modifier"><PencilIcon className="h-5 w-5" /></button>
                                     <button onClick={() => setSubjectToDelete(subject)} className="text-gray-500 hover:text-red-500 p-2" title="Supprimer"><TrashIcon className="h-5 w-5" /></button>
                                 </td>
@@ -492,21 +539,21 @@ export function ManageSubjectsPage() {
                         </div>
                         <div>
                             <label htmlFor="file" className="block text-sm font-medium text-gray-700">
-                                Fichier PDF {activeSubject.id && <span className="text-xs text-gray-500">(Optionnel: laisser vide pour ne pas changer)</span>}
+                                Fichier (PDF, JSON ou Markdown) {activeSubject.id && <span className="text-xs text-gray-500">(Optionnel: laisser vide pour ne pas changer)</span>}
                             </label>
                             <input
                                 type="file"
                                 name="file"
                                 id="file"
                                 required={!activeSubject.id} // Requis uniquement pour l'ajout
-                                accept="application/pdf"
+                                accept=".pdf,.json,.md,application/pdf,application/json,text/markdown"
                                 onChange={handleModalFileChange}
                                 className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                             />
                             {formError && (
                                 <p className="mt-2 text-sm text-red-600">{formError}</p>
                             )}
-                            <p className="mt-1 text-xs text-gray-500">PDF uniquement, taille maximale 25 MB.</p>
+                            <p className="mt-1 text-xs text-gray-500">PDF, JSON ou Markdown (.md), taille maximale 25 MB.</p>
                         </div>
                     </div>
                     <div className="mt-6 flex justify-end space-x-3">

@@ -148,7 +148,10 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                     body: JSON.stringify({
                         messages: messagesForEdge,
                         userContext,
-                        subjectContext,
+                        subjectContext: subjectContext ? {
+                            ...subjectContext,
+                            content: subjectContext.content ? subjectContext.content.substring(0, 30000) : undefined
+                        } : undefined,
                     }),
                     signal: abortControllerRef.current.signal,
                 });

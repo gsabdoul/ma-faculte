@@ -31,6 +31,7 @@ const adminNavItems = [
     { name: 'Gérer les universités', to: '/admin/universities', icon: BuildingOffice2Solid },
     { name: 'Revenus', to: '/admin/revenues', icon: CurrencyDollarSolid },
     { name: 'Notifications', to: '/admin/notifications', icon: BellSolid },
+    { name: 'Base de connaissances', to: '/admin/knowledge', icon: BuildingLibrarySolid },
     { name: 'Signalements', to: '/admin/signalements', icon: ExclamationTriangleSolid },
 ];
 
