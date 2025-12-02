@@ -47,7 +47,14 @@ export function QuizSelection({ onSelectSubject }: QuizSelectionProps) {
                 const { data, error } = await query;
 
                 if (error) throw error;
-                setSubjects(data || []);
+
+                // Transform data to match Subject interface
+                const transformedData: Subject[] = (data || []).map((item: any) => ({
+                    ...item,
+                    modules: Array.isArray(item.modules) && item.modules.length > 0 ? item.modules[0] : item.modules
+                }));
+
+                setSubjects(transformedData);
             } catch (err) {
                 console.error('Error fetching subjects:', err);
             } finally {

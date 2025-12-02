@@ -60,12 +60,13 @@ export default function ChallengesPage() {
 
                         return {
                             ...challenge,
+                            subject: Array.isArray(challenge.subject) && challenge.subject.length > 0 ? challenge.subject[0] : challenge.subject,
                             participant_count: count || 0
                         };
                     })
                 );
 
-                setMyChallenges(challengesWithCount);
+                setMyChallenges(challengesWithCount as Challenge[]);
             } catch (err) {
                 console.error('Error fetching challenges:', err);
             } finally {
