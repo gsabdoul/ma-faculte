@@ -7,6 +7,7 @@ import {
     ChevronLeftIcon,
     ChevronRightIcon,
     PlusIcon,
+    SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { supabase } from '../../supabase';
 import { Modal } from '../../components/ui/Modal';
@@ -42,6 +43,7 @@ export function ManageBooksPage() {
 
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
     const [bookToDelete, setBookToDelete] = useState<string | null>(null);
+    const [processingId, setProcessingId] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -146,6 +148,35 @@ export function ManageBooksPage() {
         setIsConfirmModalOpen(false);
     }
 
+    const handleProcess = async (book: Book) => {
+        if (!confirm(`Traiter le livre "${book.titre}" pour l'IA ?`)) return;
+
+        setProcessingId(book.id);
+        try {
+            const { data, error } = await supabase.functions.invoke('process-document', {
+                body: {
+                    livre_id: book.id,
+                    document_url: book.fichier_url,
+                    type: 'pdf'
+                }
+            });
+
+            if (error) throw error;
+
+            if (data && data.error) {
+                throw new Error(data.error);
+            }
+
+            alert(`Traitement lancé avec succès ! ${data.message || ''}`);
+        } catch (error: any) {
+            console.error('Error processing:', error);
+            const errorMessage = error?.message || error?.error || 'Erreur inconnue';
+            alert(`Erreur lors du traitement: ${errorMessage}`);
+        } finally {
+            setProcessingId(null);
+        }
+    }
+
     const filteredBooks = useMemo(() => {
         const lowercasedFilter = searchTerm.toLowerCase();
         if (!lowercasedFilter) return allBooks;
@@ -214,6 +245,14 @@ export function ManageBooksPage() {
                                 </td>
                                 <td className="py-3 px-4 text-gray-600">{book.modules?.nom || 'N/A'}</td>
                                 <td className="py-3 px-4 whitespace-nowrap text-right">
+                                    <button
+                                        onClick={() => handleProcess(book)}
+                                        disabled={!!processingId}
+                                        className={`text-purple-600 hover:text-purple-900 mr-4 ${processingId === book.id ? 'animate-spin' : ''}`}
+                                        title="Traiter pour l'IA"
+                                    >
+                                        <SparklesIcon className="h-5 w-5" />
+                                    </button>
                                     <button onClick={() => handleOpenModal(book)} className="text-gray-500 hover:text-blue-500 p-2" title="Modifier"><PencilIcon className="h-5 w-5" /></button>
                                     <button onClick={() => handleDelete(book.id)} className="text-gray-500 hover:text-red-500 p-2" title="Supprimer"><TrashIcon className="h-5 w-5" /></button>
                                 </td>

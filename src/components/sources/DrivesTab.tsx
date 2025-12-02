@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { MagnifyingGlassIcon, FlagIcon } from '@heroicons/react/24/solid';
-import { supabase } from '../supabase';
-import { useUser } from '../context/UserContext';
-import { Modal } from '../components/ui/Modal';
+import { supabase } from '../../supabase';
+import { useUser } from '../../context/UserContext';
+import { Modal } from '../../components/ui/Modal';
 
 interface Drive {
     id: string;
@@ -23,7 +23,7 @@ const DriveSkeleton = () => (
     </div>
 );
 
-export function DrivesPage() {
+export function DrivesTab() {
     const BASE_URL = import.meta.env.BASE_URL;
     const [searchTerm, setSearchTerm] = useState('');
     const [drives, setDrives] = useState<Drive[]>([]);
@@ -109,7 +109,7 @@ export function DrivesPage() {
 
     return (
         <div>
-            <header className="bg-white p-4 shadow-sm sticky top-0 z-10">
+            <header className="bg-white p-4 shadow-sm sticky top-0 z-10 drives-header">
                 <h1 className="text-2xl font-bold text-gray-800">Drives Partagés</h1>
                 <div className="relative mt-4">
                     <MagnifyingGlassIcon className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />

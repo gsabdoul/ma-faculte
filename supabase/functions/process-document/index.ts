@@ -19,13 +19,14 @@ serve(async (req: Request) => {
     }
 
     try {
-        const { document_url, sujet_id, source_id, content, type } = await req.json()
+        const { document_url, sujet_id, source_id, livre_id, content, type } = await req.json()
 
-        if ((!document_url && !content) || (!sujet_id && !source_id)) {
-            throw new Error('Missing required fields: (document_url OR content) AND (sujet_id OR source_id)')
+        if ((!document_url && !content) || (!sujet_id && !source_id && !livre_id)) {
+            throw new Error('Missing required fields: (document_url OR content) AND (sujet_id OR source_id OR livre_id)')
         }
 
-        console.log(`Processing document for ${sujet_id ? `sujet_id: ${sujet_id}` : `source_id: ${source_id}`}`)
+        console.log(`Processing document for ${sujet_id ? `sujet_id: ${sujet_id}` : source_id ? `source_id: ${source_id}` : `livre_id: ${livre_id}`}`)
+
 
         let chunks = []
         let title = ''
@@ -117,11 +118,13 @@ serve(async (req: Request) => {
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
 
-        // Delete existing chunks for this subject OR source
+        // Delete existing chunks for this subject OR source OR livre
         if (sujet_id) {
             await supabase.from('document_chunks').delete().eq('sujet_id', sujet_id)
         } else if (source_id) {
             await supabase.from('document_chunks').delete().eq('source_id', source_id)
+        } else if (livre_id) {
+            await supabase.from('document_chunks').delete().eq('livre_id', livre_id)
         }
 
         // Process chunks in batches
@@ -154,6 +157,7 @@ serve(async (req: Request) => {
             const { error } = await supabase.from('document_chunks').insert({
                 sujet_id: sujet_id || null,
                 source_id: source_id || null,
+                livre_id: livre_id || null,
                 content: chunk.content,
                 embedding,
                 metadata: chunk.metadata

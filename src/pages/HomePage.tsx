@@ -1,24 +1,22 @@
+
 import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { BellIcon, LockClosedIcon } from "@heroicons/react/24/outline";
+import { Link, useNavigate } from "react-router-dom";
+import { BellIcon } from "@heroicons/react/24/outline";
 import { Carousel } from "../components/ui/Carousel";
 import { useNotifications } from "../context/NotificationsContext";
 import { useUser } from "../context/UserContext";
 import { supabase } from "../supabase";
+import {
 
-interface Module {
-    id: string;
-    nom: string;
-    icone_url: string | null;
-    isLocked: boolean;
-}
+    PlusIcon,
+    PlayIcon,
+    QueueListIcon,
+    ClockIcon
+} from '@heroicons/react/24/solid';
+import { QuizActionCard } from '../components/quiz/QuizActionCard';
+import { CampusStarCard } from '../components/campus/CampusStarCard';
 
-const ModuleSkeleton = () => (
-    <div className="bg-gray-200 p-4 rounded-xl animate-pulse">
-        <div className="w-10 h-10 bg-gray-300 rounded-md mb-2"></div>
-        <div className="h-4 bg-gray-300 rounded w-3/4"></div>
-    </div>
-);
+
 
 const CarouselSkeleton = () => (
     <div className="aspect-video w-full bg-gray-200 rounded-xl animate-pulse"></div>
@@ -28,11 +26,19 @@ const CarouselSkeleton = () => (
 export function HomePage() {
     const navigate = useNavigate();
     const { unreadCount } = useNotifications();
-    const { profile, loading: userLoading } = useUser();
-    const [modules, setModules] = useState<Module[]>([]);
+    const { profile } = useUser();
     const [carouselItems, setCarouselItems] = useState<any[]>([]);
-    const [loadingModules, setLoadingModules] = useState(true);
+    const [loadingCarousel, setLoadingCarousel] = useState(true);
     const [updateAvailable, setUpdateAvailable] = useState(false);
+
+    // Mock data for Campus Stars
+    const campusStars = [
+        { id: '1', name: 'Sarah M.', rank: 1, score: 2450, avatar_url: null },
+        { id: '2', name: 'Jean K.', rank: 2, score: 2380, avatar_url: null },
+        { id: '3', name: 'Paul A.', rank: 3, score: 2100, avatar_url: null },
+        { id: '4', name: 'Marie L.', rank: 4, score: 1950, avatar_url: null },
+        { id: '5', name: 'Marc D.', rank: 5, score: 1800, avatar_url: null },
+    ];
 
     // Vérification automatique des mises à jour au chargement
     useEffect(() => {
@@ -61,75 +67,7 @@ export function HomePage() {
     }, []);
 
     useEffect(() => {
-        const fetchModules = async () => {
-            // Attendre que le profil utilisateur soit chargé pour éviter le "flash"
-            if (userLoading) return;
-
-            setLoadingModules(true);
-            try {
-                if (profile?.faculte_id && profile?.niveau_id) {
-                    // Récupérer les modules liés à la faculté et au niveau
-                    // On trie par le nom du module (via la relation)
-                    // Note: Supabase ne permet pas toujours le tri facile sur les relations imbriquées en une seule requête simple sans alias,
-                    // mais on peut trier côté client si nécessaire. Essayons d'abord le tri côté JS pour être sûr car 'modules(nom)' order peut être tricky.
-                    // Actually, let's try to fetch and then sort in JS to be robust, or use the inner order if possible.
-                    // Given the structure, sorting the result in JS is safest and fastest to implement reliably here.
-                    const { data, error } = await supabase
-                        .from('module_faculte_niveau')
-                        .select('modules(id, nom, icone_url, is_free)')
-                        .eq('faculte_id', profile.faculte_id)
-                        .eq('niveau_id', profile.niveau_id);
-
-                    if (error) {
-                        console.error("Erreur lors du chargement des modules (filtrés):", error);
-                        setModules([]);
-                    } else {
-                        const mods = (data ?? [])
-                            .map((row: any) => row.modules)
-                            .filter(Boolean);
-
-                        // Deduplicate and sort
-                        const uniqueById = Object.values(
-                            mods.reduce((acc: Record<string, any>, m) => {
-                                acc[m.id] = {
-                                    ...m,
-                                    isLocked: profile?.role !== 'admin' && !profile?.is_premium && !m.is_free
-                                };
-                                return acc;
-                            }, {})
-                        ).sort((a: any, b: any) => a.nom.localeCompare(b.nom));
-
-                        setModules(uniqueById);
-                    }
-                } else {
-                    // Fallback if user has no faculty/level - show all modules
-                    const { data, error } = await supabase
-                        .from('modules')
-                        .select('id, nom, icone_url, is_free')
-                        .order('nom', { ascending: true });
-
-                    if (error) {
-                        console.error("Erreur lors du chargement des modules:", error);
-                        setModules([]);
-                    } else {
-                        const allModules = (data || []).map(m => ({
-                            ...m,
-                            isLocked: profile?.role !== 'admin' && !profile?.is_premium && !m.is_free
-                        }));
-                        setModules(allModules);
-                    }
-                }
-            } catch (err) {
-                console.error("Erreur inattendue lors du chargement des modules:", err);
-            } finally {
-                setLoadingModules(false);
-            }
-        };
-        fetchModules();
-    }, [profile, userLoading]);
-
-    useEffect(() => {
-        const fetchCarouselItems = async () => {
+        const fetchCarousel = async () => {
             try {
                 const { data, error } = await supabase
                     .from('infos_carrousel')
@@ -149,23 +87,20 @@ export function HomePage() {
                 setCarouselItems(items);
             } catch (err) {
                 console.error("Erreur lors du chargement du carrousel:", err);
+            } finally {
+                setLoadingCarousel(false);
             }
         };
-        fetchCarouselItems();
+
+        fetchCarousel();
     }, []);
 
-    const handleModuleClick = (module: Module) => {
-        if (module.isLocked) {
-            navigate('/profil/abonnement');
-            return;
-        }
-        // Si le module n'est pas verrouillé, naviguer vers la page des universités pour ce module
-        const encodedName = encodeURIComponent(module.nom);
-        navigate(`/modules/${encodedName}/universites`);
-    };
+
+
+
 
     return (
-        <div>
+        <div className="pb-20 bg-gray-50 min-h-screen">
             {/* Bannière de mise à jour */}
             {updateAvailable && (
                 <div className="bg-blue-600 text-white px-4 py-3 flex items-center justify-between">
@@ -204,52 +139,64 @@ export function HomePage() {
                 {/* Section Carrousel */}
                 <section>
                     <h2 className="text-lg font-semibold mb-3 text-gray-800">Infos</h2>
-                    {loadingModules ? ( // Assuming carousel loads with modules
+                    {loadingCarousel ? (
                         <CarouselSkeleton />
                     ) : (
                         <Carousel items={carouselItems} />
                     )}
                 </section>
 
-                {/* Section GridView - Anciens sujets par module */}
+                {/* Quiz Actions Grid */}
                 <section>
-                    <h2 className="text-lg font-semibold mb-3 text-gray-800">Anciens sujets par module</h2>
-
-                    {loadingModules ? (
-                        <div className="grid grid-cols-2 gap-4">
-                            {[...Array(4)].map((_, i) => (
-                                <ModuleSkeleton key={i} />
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-2 gap-4">
-                            {modules.map((module) => (
-                                <button
-                                    key={module.id}
-                                    onClick={() => handleModuleClick(module)}
-                                    className={`relative p-4 rounded-xl shadow-md transition-all text-left bg-white hover:shadow-lg hover:-translate-y-1 active:scale-95 ${module.isLocked ? 'cursor-not-allowed bg-gray-100' : ''}`}
-                                >
-                                    {/* Icône du module */}
-                                    {module.isLocked && (
-                                        <div className="absolute top-2 right-2 bg-gray-200 p-1 rounded-full">
-                                            <LockClosedIcon className="w-4 h-4 text-gray-500" />
-                                        </div>
-                                    )}
-                                    {module.icone_url ? (
-                                        <img src={module.icone_url} alt={module.nom} className="w-10 h-10 mb-2" />
-                                    ) : (
-                                        <div className="text-4xl mb-2">📚</div>
-                                    )}
-
-                                    {/* Nom du module */}
-                                    <p className="text-sm font-medium text-gray-800">
-                                        {module.nom}
-                                    </p>
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                    <h2 className="text-lg font-bold text-gray-800 mb-3">Quiz Rapide</h2>
+                    <div className="grid grid-cols-2 gap-3">
+                        <QuizActionCard
+                            title="Créer un quiz"
+                            icon={PlusIcon}
+                            color="bg-blue-500"
+                            onClick={() => console.log('Create Quiz')}
+                        />
+                        <QuizActionCard
+                            title="Challenge"
+                            icon={PlayIcon}
+                            color="bg-green-500"
+                            onClick={() => navigate('/challenges')}
+                        />
+                        <QuizActionCard
+                            title="Playlist"
+                            icon={QueueListIcon}
+                            color="bg-purple-500"
+                            onClick={() => navigate('/playlists')}
+                        />
+                        <QuizActionCard
+                            title="Historique"
+                            icon={ClockIcon}
+                            color="bg-orange-500"
+                            onClick={() => console.log('History')}
+                        />
+                    </div>
                 </section>
+
+                {/* Campus Stars */}
+                <section>
+                    <div className="flex justify-between items-center mb-3">
+                        <h2 className="text-lg font-bold text-gray-800">Campus Stars 🌟</h2>
+                        <button className="text-sm text-blue-600 font-medium">Voir tout</button>
+                    </div>
+                    <div className="flex space-x-4 overflow-x-auto pb-4 -mx-4 px-4 scrollbar-hide">
+                        {campusStars.map((student) => (
+                            <CampusStarCard
+                                key={student.id}
+                                rank={student.rank}
+                                name={student.name}
+                                score={student.score}
+                                avatar={student.avatar_url || undefined}
+                            />
+                        ))}
+                    </div>
+                </section>
+
+
             </div>
         </div>
     );

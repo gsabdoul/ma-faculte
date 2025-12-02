@@ -39,11 +39,11 @@ Deno.serve(async (req: Request) => {
             throw new Error('Invalid payload: messages array is required');
         }
 
-        // 3. RAG: Search for relevant context if subject is present
+        // 3. RAG: Search for relevant context
         let ragContext = "";
         let sourcesMetadata = [];
 
-        if (subjectContext && subjectContext.id && VOYAGE_API_KEY) {
+        if (VOYAGE_API_KEY) {
             try {
                 // Get the last user message for search query
                 const lastUserMessage = messages.filter((m: any) => m.sender === 'user').pop();
@@ -72,10 +72,14 @@ Deno.serve(async (req: Request) => {
                     const embedding = voyageData.data[0].embedding;
 
                     // Search similar chunks
+                    // If we have a subject context, search in that subject
+                    // Otherwise, do a global search (includes books, knowledge sources, etc.)
                     const { data: chunks, error } = await supabase.rpc('search_document_chunks', {
                         query_embedding: embedding,
-                        match_sujet_id: subjectContext.id,
-                        match_threshold: 0.5, // Lower threshold to get more results
+                        match_sujet_id: subjectContext?.id || null,
+                        match_source_id: null,
+                        match_livre_id: null,
+                        match_threshold: 0.5,
                         match_count: 5
                     });
 
@@ -84,14 +88,32 @@ Deno.serve(async (req: Request) => {
                     } else if (chunks && chunks.length > 0) {
                         console.log(`Found ${chunks.length} relevant chunks`);
 
-                        ragContext = chunks.map((c: any) => `
-[Source: Page ${c.metadata.page}, Section "${c.metadata.section}"]
+                        ragContext = chunks.map((c: any) => {
+                            // Determine the source type
+                            let sourceType = 'Document';
+                            let sourceInfo = '';
+
+                            if (c.sujet_id) {
+                                sourceType = 'Sujet';
+                                sourceInfo = `Page ${c.metadata?.page || 'N/A'}`;
+                            } else if (c.livre_id) {
+                                sourceType = 'Livre';
+                                sourceInfo = `Page ${c.metadata?.page || 'N/A'}`;
+                            } else if (c.source_id) {
+                                sourceType = 'Source de connaissance';
+                                sourceInfo = c.metadata?.section || '';
+                            }
+
+                            return `
+[Source: ${sourceType} - ${sourceInfo}${c.metadata?.section ? `, Section "${c.metadata.section}"` : ''}]
 ${c.content}
-`).join('\n\n');
+`;
+                        }).join('\n\n');
 
                         sourcesMetadata = chunks.map((c: any) => ({
-                            page: c.metadata.page,
-                            section: c.metadata.section
+                            type: c.sujet_id ? 'sujet' : c.livre_id ? 'livre' : 'source',
+                            page: c.metadata?.page,
+                            section: c.metadata?.section
                         }));
                     }
                 }
@@ -120,6 +142,7 @@ Tu ne dois JAMAIS inventer de contenu qui n'existe pas dans le contexte fourni.
 - Suggère des ressources pertinentes (sujets, livres, drives) basées sur leur faculté et niveau
 - Reste dans le contexte universitaire burkinabé
 - Adapte tes réponses au niveau d'étude de l'étudiant
+- Utilise le contenu des livres/cours disponibles pour enrichir tes réponses
 - À la fin de tes réponses, propose souvent 3 questions courtes de suivi pertinentes, formatées exactement comme ceci :
 [SUGGESTIONS]
 1. Question 1 ?
@@ -143,9 +166,10 @@ Tu ne dois JAMAIS inventer de contenu qui n'existe pas dans le contexte fourni.
 L'étudiant consulte actuellement le document : "${subjectContext.title}".`;
 
             if (ragContext) {
-                systemInstruction += `\n\n## Contenu PERTINENT du PDF (RAG)
-Voici les extraits les plus pertinents du document trouvés pour la question de l'étudiant. Utilise ces extraits pour formuler ta réponse.
-CITE TES SOURCES en mentionnant les numéros de page (ex: "Selon la page 5...").
+                systemInstruction += `\n\n## Contenu PERTINENT (RAG)
+Voici les extraits les plus pertinents trouvés pour la question de l'étudiant (provenant de sujets, livres ou sources de connaissance).
+Utilise ces extraits pour formuler ta réponse.
+CITE TES SOURCES en mentionnant le type de source et les numéros de page (ex: "Selon le livre, page 5..." ou "D'après le sujet, page 3...").
 
 ${ragContext}
 

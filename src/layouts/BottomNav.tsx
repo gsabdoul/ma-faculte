@@ -1,12 +1,18 @@
 import { NavLink } from 'react-router-dom';
-import { HomeIcon, FolderIcon, BookOpenIcon, UserIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/solid';
+import {
+    HomeIcon,
+    ChatBubbleLeftRightIcon,
+    ChartBarIcon,
+    FolderOpenIcon,
+    AcademicCapIcon
+} from '@heroicons/react/24/solid';
 
 const navItems = [
-    { path: '/', label: 'Accueil', icon: HomeIcon },
-    { path: '/drives', label: 'Drives', icon: FolderIcon },
+    { path: '/home', label: 'Accueil', icon: HomeIcon },
+    { path: '/sujets', label: 'Sujets', icon: AcademicCapIcon },
     { path: '/chat', label: 'Chat', icon: ChatBubbleLeftRightIcon },
-    { path: '/livres', label: 'Livres', icon: BookOpenIcon },
-    { path: '/profil', label: 'Profil', icon: UserIcon },
+    { path: '/stats', label: 'Stats', icon: ChartBarIcon },
+    { path: '/sources', label: 'Sources', icon: FolderOpenIcon },
 ];
 
 export function BottomNav() {

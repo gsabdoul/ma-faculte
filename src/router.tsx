@@ -1,13 +1,11 @@
 import { createHashRouter, Navigate } from "react-router-dom";
 import { MainLayout } from "./layouts/MainLayout";
 import { HomePage } from "./pages/HomePage";
-import { DrivesPage } from "./pages/DrivesPage";
-import { BooksPage } from "./pages/BooksPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { UniversitePage } from "./pages/UniversitePage";
-import { SujetPage } from "./pages/SujetPage";
-import { SujetViewPage } from "./pages/SujetViewPage";
-import { SujetCorrectionPage } from "./pages/SujetCorrectionPage";
+import { StatsPage } from "./pages/StatsPage";
+import { SourcesPage } from "./pages/SourcesPage";
+import { SubjectsPage } from "./pages/SubjectsPage";
 import { EditProfilePage } from "./pages/EditProfilePage";
 import { SubscriptionPage } from "./pages/SubscriptionPage";
 import { TeamPage } from "./pages/TeamPage";
@@ -39,6 +37,13 @@ import { ManageFacultiesPage } from './pages/admin/ManageFacultiesPage';
 import { ManageSignalementsPage } from './pages/admin/ManageSignalementsPage';
 import { ManageCarouselPage } from './pages/admin/ManageCarouselPage';
 import { ManageKnowledgePage } from './pages/admin/ManageKnowledgePage';
+import { QuizPage } from './pages/QuizPage';
+import { SubjectListPage } from './pages/SubjectListPage';
+import { PlaylistsPage } from './pages/PlaylistsPage';
+import { PlaylistDetailPage } from './pages/PlaylistDetailPage';
+import ChallengesPage from './pages/ChallengesPage';
+import ChallengeLobbyPage from './pages/ChallengeLobbyPage';
+import ChallengeGamePage from './pages/ChallengeGamePage';
 
 
 export const router = createHashRouter([
@@ -59,15 +64,23 @@ export const router = createHashRouter([
                 element: <RequireAuth />,
                 children: [
                     { path: "home", element: <HomePage /> },
-                    { path: "drives", element: <DrivesPage /> },
+                    { path: "sujets", element: <SubjectsPage /> },
                     { path: "chat", element: <ChatPage /> },
-                    { path: "livres", element: <BooksPage /> },
+                    { path: "stats", element: <StatsPage /> },
+                    { path: "sources", element: <SourcesPage /> },
+                    { path: "drives", element: <Navigate to="/sources" replace /> },
+                    { path: "livres", element: <Navigate to="/sources" replace /> },
                     { path: "profil", element: <ProfilePage /> }, // Note: les sous-routes de profil sont en dehors du MainLayout
                     { path: "modules/:moduleId/universites", element: <UniversitePage /> },
-                    { path: "modules/:moduleId/universites/:universityId/sujets", element: <SujetPage /> },
-                    { path: "sujets/:sujetId", element: <SujetViewPage /> },
-                    { path: "sujets/:sujetId/correction", element: <SujetCorrectionPage /> },
+                    { path: "modules/:moduleId/universites/:universityId/sujets", element: <SubjectListPage /> },
                     { path: "notifications", element: <NotificationsPage /> },
+                    { path: "quiz", element: <QuizPage /> },
+                    { path: "quiz/:subjectId", element: <QuizPage /> },
+                    { path: "playlists", element: <PlaylistsPage /> },
+                    { path: "playlists/:id", element: <PlaylistDetailPage /> },
+                    { path: "challenges", element: <ChallengesPage /> },
+                    { path: "challenges/lobby/:id", element: <ChallengeLobbyPage /> },
+                    { path: "challenges/game/:id", element: <ChallengeGamePage /> },
                 ]
             },
         ],

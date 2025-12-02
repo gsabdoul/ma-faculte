@@ -4,7 +4,26 @@ from docling.document_converter import DocumentConverter
 from pydantic import BaseModel
 import tempfile
 import os
+import os
 from typing import List, Dict
+from supabase import create_client, Client
+from sentence_transformers import SentenceTransformer
+from dotenv import load_dotenv
+
+load_dotenv()
+
+load_dotenv()
+
+# Initialisation de Supabase
+SUPABASE_URL = os.environ.get("VITE_SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("VITE_SUPABASE_ANON_KEY")
+
+print(f"SUPABASE_URL: {SUPABASE_URL}")
+print(f"SUPABASE_KEY: {SUPABASE_KEY[:5]}...") # Print only first 5 chars for security
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Initialisation du modèle d'embeddings
+embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 app = FastAPI(title="Docling PDF Processor")
 
@@ -26,6 +45,8 @@ class ChunkMetadata(BaseModel):
 class DocumentChunk(BaseModel):
     content: str
     metadata: ChunkMetadata
+    embedding: List[float] = []
+    source_id: str = None
 
 class ProcessedDocument(BaseModel):
     chunks: List[DocumentChunk]
@@ -69,7 +90,7 @@ async def convert_pdf(file: UploadFile):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
 
-def smart_chunk_document(document) -> List[DocumentChunk]:
+def smart_chunk_document(document, source_id: str = None) -> List[DocumentChunk]:
     """
     Découpe intelligemment le document en chunks basés sur la structure.
     Garde les sections ensemble, préserve les tableaux, etc.
@@ -147,6 +168,54 @@ def extract_title(document) -> str:
                 return element.text if hasattr(element, 'text') else "Untitled"
     
     return "Untitled Document"
+
+class MarkdownProcessRequest(BaseModel):
+    content: str
+    source_id: str
+
+@app.post("/process-markdown")
+async def process_markdown(request: MarkdownProcessRequest):
+    """
+    Traite le contenu Markdown, génère des embeddings et les stocke dans Supabase.
+    """
+    try:
+        # Simple chunking pour le Markdown (peut être amélioré)
+        chunks_content = [chunk.strip() for chunk in request.content.split("\n\n") if chunk.strip()]
+        
+        processed_chunks = []
+        for i, chunk_content in enumerate(chunks_content):
+            # Générer l'embedding
+            embedding = embedding_model.encode(chunk_content).tolist()
+            
+            # Créer le DocumentChunk
+            doc_chunk = DocumentChunk(
+                content=chunk_content,
+                metadata=ChunkMetadata(
+                    page=0,  # Pas de page pour le Markdown simple
+                    section=f"chunk_{i}",
+                    heading_level=0,
+                    chunk_type="markdown_paragraph"
+                ),
+                embedding=embedding,
+                source_id=request.source_id
+            )
+            processed_chunks.append(doc_chunk)
+            
+            # Stocker dans Supabase
+            response = supabase.table('document_chunks').insert({
+                "content": doc_chunk.content,
+                "metadata": doc_chunk.metadata.dict(),
+                "embedding": doc_chunk.embedding,
+                "source_id": doc_chunk.source_id
+            }).execute()
+            
+            if response.data is None:
+                raise Exception(f"Erreur lors de l'insertion dans Supabase: {response.error}")
+
+        return {"message": "Markdown processed and embeddings stored successfully", "chunks_count": len(processed_chunks)}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing Markdown: {str(e)}")
 
 @app.get("/health")
 async def health_check():
