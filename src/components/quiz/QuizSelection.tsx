@@ -54,6 +54,7 @@ export function QuizSelection({ onSelectSubject }: QuizSelectionProps) {
                     modules: Array.isArray(item.modules) && item.modules.length > 0 ? item.modules[0] : item.modules
                 }));
 
+                // Fix type mismatch
                 setSubjects(transformedData);
             } catch (err) {
                 console.error('Error fetching subjects:', err);

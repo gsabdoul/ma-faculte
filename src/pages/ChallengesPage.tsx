@@ -66,6 +66,7 @@ export default function ChallengesPage() {
                     })
                 );
 
+                // Fix type mismatch by casting
                 setMyChallenges(challengesWithCount as Challenge[]);
             } catch (err) {
                 console.error('Error fetching challenges:', err);
