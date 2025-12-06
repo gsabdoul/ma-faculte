@@ -25,9 +25,10 @@ interface Challenge {
     code: string;
     creator_id: string;
     status: string;
-    subject_id: number | null;
-    subject?: {
-        titre: string;
+    quiz_id: string | null;
+    quiz?: {
+        title: string;
+        questions: any[];
     };
 }
 
@@ -46,12 +47,12 @@ export default function ChallengeLobbyPage() {
         // Fetch initial data
         const fetchData = async () => {
             try {
-                // Get challenge details with subject info
+                // Get challenge details with quiz info
                 const { data: challengeData, error: challengeError } = await supabase
                     .from('challenges')
                     .select(`
                         *,
-                        sujets:subject_id (titre)
+                        user_quizzes:quiz_id (title, questions)
                     `)
                     .eq('id', id)
                     .single();
@@ -59,7 +60,7 @@ export default function ChallengeLobbyPage() {
                 if (challengeError) throw challengeError;
                 setChallenge({
                     ...challengeData,
-                    subject: challengeData.sujets
+                    quiz: challengeData.user_quizzes
                 });
 
                 // Get participants with user profile data
@@ -201,28 +202,18 @@ export default function ChallengeLobbyPage() {
         if (!challenge) return;
 
         try {
-            // Build query to fetch questions
-            let query = supabase
-                .from('questions')
-                .select('id')
-                .limit(20);
-
-            // Filter by subject if specified
-            if (challenge.subject_id) {
-                query = query.eq('sujet_id', challenge.subject_id);
-            }
-
-            const { data: questionsData, error: questionsError } = await query;
-
-            if (questionsError) throw questionsError;
-
-            if (!questionsData || questionsData.length === 0) {
-                alert("Aucune question disponible pour ce sujet");
+            // Get questions from the quiz
+            if (!challenge.quiz || !challenge.quiz.questions || challenge.quiz.questions.length === 0) {
+                alert("Aucune question disponible pour ce quiz");
                 return;
             }
 
-            const shuffled = questionsData.sort(() => 0.5 - Math.random());
-            const selectedQuestions = shuffled.slice(0, Math.min(10, shuffled.length)).map(q => q.id);
+            // Use the questions from the quiz (they're already stored in the quiz)
+            const quizQuestions = challenge.quiz.questions;
+
+            // Shuffle and select questions (limit to 10 for the challenge)
+            const shuffled = [...quizQuestions].sort(() => 0.5 - Math.random());
+            const selectedQuestions = shuffled.slice(0, Math.min(10, shuffled.length));
 
             // Update challenge with questions and status
             const { error } = await supabase
@@ -263,9 +254,9 @@ export default function ChallengeLobbyPage() {
                     <h1 className="text-2xl font-bold mb-2">
                         {isCompleted ? '🏆 Challenge Terminé !' : 'Lobby du Challenge'}
                     </h1>
-                    {challenge.subject && (
+                    {challenge.quiz && (
                         <p className="text-sm opacity-90 mb-1">
-                            📚 {challenge.subject.titre}
+                            📝 {challenge.quiz.title}
                         </p>
                     )}
                     <p className="opacity-90">

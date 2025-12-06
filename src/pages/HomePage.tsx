@@ -11,15 +11,15 @@ import {
     PlusIcon,
     PlayIcon,
     QueueListIcon,
-    ClockIcon
+    PencilSquareIcon
 } from '@heroicons/react/24/solid';
 import { QuizActionCard } from '../components/quiz/QuizActionCard';
-import { CampusStarCard } from '../components/campus/CampusStarCard';
 
 
 
+// Ratio 1920/400 = 4.8
 const CarouselSkeleton = () => (
-    <div className="aspect-video w-full bg-gray-200 rounded-xl animate-pulse"></div>
+    <div className="w-full bg-gray-200 rounded-xl animate-pulse" style={{ aspectRatio: '1920/400' }}></div>
 );
 
 
@@ -32,13 +32,6 @@ export function HomePage() {
     const [updateAvailable, setUpdateAvailable] = useState(false);
 
     // Mock data for Campus Stars
-    const campusStars = [
-        { id: '1', name: 'Sarah M.', rank: 1, score: 2450, avatar_url: null },
-        { id: '2', name: 'Jean K.', rank: 2, score: 2380, avatar_url: null },
-        { id: '3', name: 'Paul A.', rank: 3, score: 2100, avatar_url: null },
-        { id: '4', name: 'Marie L.', rank: 4, score: 1950, avatar_url: null },
-        { id: '5', name: 'Marc D.', rank: 5, score: 1800, avatar_url: null },
-    ];
 
     // Vérification automatique des mises à jour au chargement
     useEffect(() => {
@@ -146,56 +139,41 @@ export function HomePage() {
                     )}
                 </section>
 
+
                 {/* Quiz Actions Grid */}
                 <section>
                     <h2 className="text-lg font-bold text-gray-800 mb-3">Quiz Rapide</h2>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-4">
                         <QuizActionCard
-                            title="Créer un quiz"
+                            title="Mes Quiz"
                             icon={PlusIcon}
-                            color="bg-blue-500"
-                            onClick={() => console.log('Create Quiz')}
+                            color="from-blue-500 to-indigo-600"
+                            onClick={() => navigate('/quiz')}
+                            delay={0}
                         />
                         <QuizActionCard
                             title="Challenge"
                             icon={PlayIcon}
-                            color="bg-green-500"
+                            color="from-emerald-400 to-teal-600"
                             onClick={() => navigate('/challenges')}
+                            delay={100}
                         />
                         <QuizActionCard
                             title="Playlist"
                             icon={QueueListIcon}
-                            color="bg-purple-500"
+                            color="from-violet-500 to-purple-600"
                             onClick={() => navigate('/playlists')}
+                            delay={200}
                         />
                         <QuizActionCard
-                            title="Historique"
-                            icon={ClockIcon}
-                            color="bg-orange-500"
-                            onClick={() => console.log('History')}
+                            title="Mes Notes"
+                            icon={PencilSquareIcon}
+                            color="from-amber-400 to-orange-600"
+                            onClick={() => navigate('/notes')}
+                            delay={300}
                         />
                     </div>
                 </section>
-
-                {/* Campus Stars */}
-                <section>
-                    <div className="flex justify-between items-center mb-3">
-                        <h2 className="text-lg font-bold text-gray-800">Campus Stars 🌟</h2>
-                        <button className="text-sm text-blue-600 font-medium">Voir tout</button>
-                    </div>
-                    <div className="flex space-x-4 overflow-x-auto pb-4 -mx-4 px-4 scrollbar-hide">
-                        {campusStars.map((student) => (
-                            <CampusStarCard
-                                key={student.id}
-                                rank={student.rank}
-                                name={student.name}
-                                score={student.score}
-                                avatar={student.avatar_url || undefined}
-                            />
-                        ))}
-                    </div>
-                </section>
-
 
             </div>
         </div>

@@ -4,6 +4,7 @@ import { ChevronLeftIcon } from '@heroicons/react/24/outline';
 import { supabase } from '../../supabase';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
+import { getSubjectTitle } from '../../utils/subjectUtils';
 
 interface Module {
     id: string;
@@ -19,13 +20,13 @@ export function EditSubjectPage() {
     const { subjectId } = useParams<{ subjectId: string }>();
     const navigate = useNavigate();
 
-    const [title, setTitle] = useState('');
     const [selectedModuleId, setSelectedModuleId] = useState('');
     const [selectedModuleName, setSelectedModuleName] = useState('');
     const [selectedUniversityId, setSelectedUniversityId] = useState('');
     const [selectedUniversityName, setSelectedUniversityName] = useState('');
-    const [file, setFile] = useState<File | null>(null);
     const [year, setYear] = useState<string>('');
+    const [session, setSession] = useState<'Normale' | 'Rattrapage'>('Normale');
+    const [correction, setCorrection] = useState('');
 
     const [modules, setModules] = useState<Module[]>([]);
     const [universities, setUniversities] = useState<University[]>([]);
@@ -60,15 +61,16 @@ export function EditSubjectPage() {
                 if (unisRes.error) throw unisRes.error;
 
                 const subject = subjectRes.data;
-                setTitle(subject.titre);
                 setSelectedModuleId(subject.module_id);
                 setSelectedModuleName(subject.modules?.nom || '');
                 setSelectedUniversityId(subject.universite_id);
                 setSelectedUniversityName(subject.universites?.nom || '');
                 setYear(subject.annee ? String(subject.annee) : '');
+                setSession(subject.session || 'Normale');
+                setCorrection(subject.correction || '');
 
-                setModules(modsRes.data.map((m: { id: any; nom: any; }) => ({ id: m.id, name: m.nom })));
-                setUniversities(unisRes.data.map((u: { id: any; nom: any; }) => ({ id: u.id, name: u.nom })));
+                setModules(modsRes.data.map((m: any) => ({ id: m.id, name: m.nom })));
+                setUniversities(unisRes.data.map((u: any) => ({ id: u.id, name: u.nom })));
 
             } catch (err: any) {
                 setError(err.message);
@@ -81,8 +83,8 @@ export function EditSubjectPage() {
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
-        if (!title || !selectedModuleId || !selectedUniversityId) {
-            setError("Veuillez remplir tous les champs obligatoires.");
+        if (!selectedModuleId || !selectedUniversityId) {
+            setError("Veuillez sélectionner un module et une université.");
             return;
         }
 
@@ -91,26 +93,12 @@ export function EditSubjectPage() {
 
         try {
             const subjectUpdate: any = {
-                titre: title,
                 module_id: selectedModuleId,
                 universite_id: selectedUniversityId,
                 annee: year ? Number(year) : null,
+                session: session,
+                correction: correction || null,
             };
-
-            if (file) {
-                if (file.type !== 'application/pdf') {
-                    throw new Error('Le fichier doit être un PDF.');
-                }
-                const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
-                if (file.size > MAX_SIZE) {
-                    throw new Error('Le fichier dépasse la taille maximale autorisée (25MB).');
-                }
-                const filePath = `public/sujets/${Date.now()}_${file.name.replace(/\s/g, '_')}`;
-                const { error: uploadError } = await supabase.storage.from('sujets').upload(filePath, file);
-                if (uploadError) throw uploadError;
-                subjectUpdate.fichier_url = supabase.storage.from('sujets').getPublicUrl(filePath).data.publicUrl;
-                subjectUpdate.taille_fichier = file.size;
-            }
 
             const { error: updateError } = await supabase.from('sujets').update(subjectUpdate).eq('id', subjectId);
 
@@ -147,11 +135,39 @@ export function EditSubjectPage() {
                 {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
                 <form onSubmit={handleSubmit} className="space-y-6 bg-white p-6 rounded-xl shadow-md">
                     <div>
-                        <label htmlFor="title" className="block text-sm font-medium text-gray-700">Titre du sujet</label>
-                        <input type="text" id="title" value={title} onChange={(e) => setTitle(e.target.value)} required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Module <span className="text-red-500">*</span>
+                        </label>
+                        <SearchableSelect
+                            options={modules}
+                            value={selectedModuleName}
+                            onChange={(option: any) => {
+                                setSelectedModuleId(option?.id || '');
+                                setSelectedModuleName(option?.name || '');
+                            }}
+                            placeholder="Sélectionner un module..."
+                        />
                     </div>
+
                     <div>
-                        <label htmlFor="year" className="block text-sm font-medium text-gray-700">Année (optionnel)</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Université <span className="text-red-500">*</span>
+                        </label>
+                        <SearchableSelect
+                            options={universities}
+                            value={selectedUniversityName}
+                            onChange={(option: any) => {
+                                setSelectedUniversityId(option?.id || '');
+                                setSelectedUniversityName(option?.name || '');
+                            }}
+                            placeholder="Sélectionner une université..."
+                        />
+                    </div>
+
+                    <div>
+                        <label htmlFor="year" className="block text-sm font-medium text-gray-700 mb-2">
+                            Année
+                        </label>
                         <input
                             type="number"
                             id="year"
@@ -163,34 +179,42 @@ export function EditSubjectPage() {
                             placeholder="Ex: 2023"
                         />
                     </div>
+
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Module</label>
-                        <SearchableSelect
-                            options={modules}
-                            value={selectedModuleName}
-                            onChange={(option: any) => {
-                                setSelectedModuleId(option?.id || '');
-                                setSelectedModuleName(option?.name || '');
-                            }}
+                        <label htmlFor="session" className="block text-sm font-medium text-gray-700 mb-2">
+                            Session <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                            id="session"
+                            value={session}
+                            onChange={(e) => setSession(e.target.value as 'Normale' | 'Rattrapage')}
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                        >
+                            <option value="Normale">Normale</option>
+                            <option value="Rattrapage">Rattrapage</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label htmlFor="correction" className="block text-sm font-medium text-gray-700 mb-2">
+                            Correction (optionnel)
+                        </label>
+                        <textarea
+                            id="correction"
+                            rows={4}
+                            value={correction}
+                            onChange={(e) => setCorrection(e.target.value)}
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                            placeholder="Entrez la correction..."
                         />
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Université</label>
-                        <SearchableSelect
-                            options={universities}
-                            value={selectedUniversityName}
-                            onChange={(option: any) => {
-                                setSelectedUniversityId(option?.id || '');
-                                setSelectedUniversityName(option?.name || '');
-                            }}
-                        />
-                    </div>
-                    <div>
-                        <label htmlFor="file" className="block text-sm font-medium text-gray-700">Remplacer le fichier PDF (optionnel)</label>
-                        <input type="file" id="file" accept="application/pdf" onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)} className="mt-1 block w-full text-sm" />
-                    </div>
+
                     <div className="pt-4">
-                        <button type="submit" disabled={submitting} className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 disabled:bg-blue-300">
+                        <button
+                            type="submit"
+                            disabled={submitting || !selectedModuleId || !selectedUniversityId}
+                            className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 disabled:bg-blue-300"
+                        >
                             {submitting ? 'Mise à jour...' : 'Enregistrer les modifications'}
                         </button>
                     </div>

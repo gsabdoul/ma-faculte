@@ -2,10 +2,9 @@ import { createHashRouter, Navigate } from "react-router-dom";
 import { MainLayout } from "./layouts/MainLayout";
 import { HomePage } from "./pages/HomePage";
 import { ProfilePage } from "./pages/ProfilePage";
-import { UniversitePage } from "./pages/UniversitePage";
 import { StatsPage } from "./pages/StatsPage";
-import { SourcesPage } from "./pages/SourcesPage";
-import { SubjectsPage } from "./pages/SubjectsPage";
+import { DrivesPage } from "./pages/DrivesPage";
+import { BooksPage } from "./pages/BooksPage";
 import { EditProfilePage } from "./pages/EditProfilePage";
 import { SubscriptionPage } from "./pages/SubscriptionPage";
 import { TeamPage } from "./pages/TeamPage";
@@ -29,6 +28,7 @@ import { AddDrivePage } from './pages/writer/AddDrivePage';
 import { EditSubjectPage } from './pages/writer/EditSubjectPage';
 import { EditBookPage } from './pages/writer/EditBookPage';
 import { EditDrivePage } from './pages/writer/EditDrivePage';
+import { WriterSubjectDetailsPage } from './pages/writer/WriterSubjectDetailsPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ChatPage } from './pages/ChatPage';
@@ -38,12 +38,13 @@ import { ManageSignalementsPage } from './pages/admin/ManageSignalementsPage';
 import { ManageCarouselPage } from './pages/admin/ManageCarouselPage';
 import { ManageKnowledgePage } from './pages/admin/ManageKnowledgePage';
 import { QuizPage } from './pages/QuizPage';
-import { SubjectListPage } from './pages/SubjectListPage';
 import { PlaylistsPage } from './pages/PlaylistsPage';
 import { PlaylistDetailPage } from './pages/PlaylistDetailPage';
 import ChallengesPage from './pages/ChallengesPage';
 import ChallengeLobbyPage from './pages/ChallengeLobbyPage';
 import ChallengeGamePage from './pages/ChallengeGamePage';
+import { SubjectDetailsPage } from './pages/admin/SubjectDetailsPage'; // Importer le composant pour les détails du sujet
+import { NotesPage } from './pages/NotesPage';
 
 
 export const router = createHashRouter([
@@ -64,15 +65,11 @@ export const router = createHashRouter([
                 element: <RequireAuth />,
                 children: [
                     { path: "home", element: <HomePage /> },
-                    { path: "sujets", element: <SubjectsPage /> },
                     { path: "chat", element: <ChatPage /> },
                     { path: "stats", element: <StatsPage /> },
-                    { path: "sources", element: <SourcesPage /> },
-                    { path: "drives", element: <Navigate to="/sources" replace /> },
-                    { path: "livres", element: <Navigate to="/sources" replace /> },
-                    { path: "profil", element: <ProfilePage /> }, // Note: les sous-routes de profil sont en dehors du MainLayout
-                    { path: "modules/:moduleId/universites", element: <UniversitePage /> },
-                    { path: "modules/:moduleId/universites/:universityId/sujets", element: <SubjectListPage /> },
+                    { path: "drives", element: <DrivesPage /> },
+                    { path: "livres", element: <BooksPage /> },
+                    { path: "profil", element: <ProfilePage /> },
                     { path: "notifications", element: <NotificationsPage /> },
                     { path: "quiz", element: <QuizPage /> },
                     { path: "quiz/:subjectId", element: <QuizPage /> },
@@ -81,6 +78,7 @@ export const router = createHashRouter([
                     { path: "challenges", element: <ChallengesPage /> },
                     { path: "challenges/lobby/:id", element: <ChallengeLobbyPage /> },
                     { path: "challenges/game/:id", element: <ChallengeGamePage /> },
+                    { path: "notes", element: <NotesPage /> },
                 ]
             },
         ],
@@ -108,7 +106,9 @@ export const router = createHashRouter([
             { path: "add-drive", element: <AddDrivePage /> },
             { path: "edit-subject/:subjectId", element: <EditSubjectPage /> },
             { path: "edit-book/:bookId", element: <EditBookPage /> },
+            { path: "edit-book/:bookId", element: <EditBookPage /> },
             { path: "edit-drive/:driveId", element: <EditDrivePage /> },
+            { path: "sujets/:subjectId", element: <WriterSubjectDetailsPage /> },
         ]
     },
 
@@ -133,6 +133,7 @@ export const router = createHashRouter([
                     { path: "faculties", element: <ManageFacultiesPage /> },
                     { path: "carousel", element: <ManageCarouselPage /> },
                     { path: "knowledge", element: <ManageKnowledgePage /> },
+                    { path: "sujets/:subjectId", element: <SubjectDetailsPage /> }, // Détails du sujet
                 ]
             }
         ]

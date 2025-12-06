@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, type ChangeEvent, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useUser } from '../../context/UserContext';
+import { useNavigate } from 'react-router-dom';
 import {
     PencilIcon,
     TrashIcon,
@@ -8,11 +9,8 @@ import {
     ChevronLeftIcon,
     ChevronRightIcon,
     EyeIcon,
-    SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { supabase } from '../../supabase';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { Modal } from '../../components/ui/Modal';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
 
@@ -22,6 +20,8 @@ type ModuleId = string;
 // Simplified frontend shapes: we map DB fields to { id, name }
 type Module = { id: string; name: string };
 type University = { id: string; name: string };
+type Faculty = { id: string; name: string };
+type Level = { id: string; name: string };
 
 // Aplatir/simplifier: we'll fetch sujets, modules and universites from Supabase
 
@@ -34,6 +34,10 @@ interface SubjectInfo {
     moduleName: string;
     universityId: string;
     universityName: string;
+    faculteId: string;
+    faculteName: string;
+    niveauId: string;
+    niveauName: string;
     correction?: string | null;
     year?: number | null;
     creatorId?: number;
@@ -49,10 +53,17 @@ const emptySubject = {
     universityName: '',
     file: null as File | null,
     correction: '' as string,
-    year: '' as string | number | ''
+    year: '' as string | number | '',
+    faculteId: '',
+    faculteName: '',
+    niveauId: '',
+    niveauName: '',
 };
 
 export function ManageSubjectsPage() {
+    const navigate = useNavigate();
+    const { user } = useUser();
+
     // États pour la recherche, la pagination et les données
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedModule, setSelectedModule] = useState('');
@@ -60,37 +71,47 @@ export function ManageSubjectsPage() {
     const [allSubjects, setAllSubjects] = useState<SubjectInfo[]>([]);
     const [modules, setModules] = useState<Module[]>([]);
     const [universities, setUniversities] = useState<University[]>([]);
-    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [faculties, setFaculties] = useState<Faculty[]>([]);
+    const [levels, setLevels] = useState<Level[]>([]);
 
-    // Load modules, universites, sujets and current user from Supabase on mount
+    // Load modules, universites, faculties, and levels from Supabase on mount
     useEffect(() => {
         let cancelled = false;
         const load = async () => {
             try {
-                const [modsRes, unisRes, sujetsRes, userRes] = await Promise.all([
+                const [modsRes, unisRes, sujetsRes, facsRes, levelsRes] = await Promise.all([
                     supabase.from('modules').select('id, nom'),
                     supabase.from('universites').select('id, nom'),
-                    supabase.from('sujets').select('id, titre, fichier_url, module_id, universite_id, annee, correction, created_by'),
-                    supabase.auth.getUser()
+                    supabase.from('sujets').select('id, titre, module_id, universite_id, faculte_id, niveau_id, annee, correction, created_by'),
+                    supabase.from('facultes').select('id, nom'),
+                    supabase.from('niveaux').select('id, nom'),
                 ]);
 
                 if (cancelled) return;
 
+                console.log('Modules:', modsRes.data);
+                console.log('Universités:', unisRes.data);
+                console.log('Facultés:', facsRes.data);
+                console.log('Niveaux:', levelsRes.data);
+                console.log('Sujets:', sujetsRes.data);
+
                 if (modsRes.error) throw modsRes.error;
                 if (unisRes.error) throw unisRes.error;
                 if (sujetsRes.error) throw sujetsRes.error;
+                if (facsRes.error) throw facsRes.error;
+                if (levelsRes.error) throw levelsRes.error;
 
                 const mods: Module[] = (modsRes.data || []).map((m: any) => ({ id: m.id, name: m.nom }));
                 const unis: University[] = (unisRes.data || []).map((u: any) => ({ id: u.id, name: u.nom }));
-
-                // helper maps for name lookup
-                const modById = Object.fromEntries(mods.map(m => [m.id, m]));
-                const uniById = Object.fromEntries(unis.map(u => [u.id, u]));
+                const facs: Faculty[] = (facsRes.data || []).map((f: any) => ({ id: f.id, name: f.nom }));
+                const lvls: Level[] = (levelsRes.data || []).map((l: any) => ({ id: l.id, name: l.nom }));
 
                 const sujets = (sujetsRes.data || []).map((s: any) => {
-                    const module = modById[s.module_id];
-                    const uni = uniById[s.universite_id];
-                    const info: SubjectInfo = {
+                    const module = mods.find(m => m.id === s.module_id);
+                    const uni = unis.find(u => u.id === s.universite_id);
+                    const fac = facs.find(f => f.id === s.faculte_id);
+                    const lvl = lvls.find(l => l.id === s.niveau_id);
+                    return {
                         id: s.id,
                         title: s.titre || 'Sans titre',
                         fileSize: 'N/A',
@@ -99,20 +120,22 @@ export function ManageSubjectsPage() {
                         moduleName: module?.name || '',
                         universityId: s.universite_id,
                         universityName: uni?.name || '',
+                        faculteId: s.faculte_id,
+                        faculteName: fac?.name || '',
+                        niveauId: s.niveau_id,
+                        niveauName: lvl?.name || '',
                         correction: s.correction ?? null,
                         year: s.annee ?? null,
                     };
-                    return info;
                 });
 
                 setModules(mods);
                 setUniversities(unis);
+                setFaculties(facs);
+                setLevels(lvls);
                 setAllSubjects(sujets);
-                if (userRes.data.user) {
-                    setCurrentUserId(userRes.data.user.id);
-                }
             } catch (_err) {
-                // intentionally silent; UI could surface this in future
+                console.error('Error loading data:', _err);
             }
         };
 
@@ -128,40 +151,6 @@ export function ManageSubjectsPage() {
 
     // État pour la modale de suppression
     const [subjectToDelete, setSubjectToDelete] = useState<SubjectInfo | null>(null);
-
-    // État pour le traitement RAG
-    const [processingSubjectId, setProcessingSubjectId] = useState<string | null>(null);
-
-    const handleProcessRAG = async (subject: SubjectInfo) => {
-        if (!subject.pdfUrl || subject.pdfUrl === '#') {
-            alert("Ce sujet n'a pas de fichier valide.");
-            return;
-        }
-
-        if (!confirm(`Voulez-vous traiter le document "${subject.title}" pour l'IA ? Cela peut prendre quelques minutes.`)) {
-            return;
-        }
-
-        try {
-            setProcessingSubjectId(subject.id);
-
-            const { data, error } = await supabase.functions.invoke('process-document', {
-                body: {
-                    document_url: subject.pdfUrl,
-                    sujet_id: subject.id
-                }
-            });
-
-            if (error) throw error;
-
-            alert(`Traitement réussi ! ${data.message}`);
-        } catch (error: any) {
-            console.error('Error processing document:', error);
-            alert(`Erreur lors du traitement : ${error.message || 'Erreur inconnue'}`);
-        } finally {
-            setProcessingSubjectId(null);
-        }
-    };
 
     const universitiesByModule: Record<string, University[]> = useMemo(() => {
         // In the current schema universites are not directly linked to modules,
@@ -196,45 +185,20 @@ export function ManageSubjectsPage() {
 
     const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
 
-    const MAX_PDF_SIZE = 25 * 1024 * 1024; // 25MB
-    const [formError, setFormError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    const handleModalFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            // Validations côté client
-            const validTypes = ['application/pdf', 'application/json', 'text/markdown', 'text/plain'];
-            const validExtensions = ['.pdf', '.json', '.md', '.markdown'];
-            const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
-
-            if (!validTypes.includes(file.type) && !validExtensions.includes(fileExtension)) {
-                setFormError('Le fichier doit être un PDF, JSON ou Markdown (.md).');
-                return;
-            }
-            if (file.size > MAX_PDF_SIZE) {
-                setFormError('Le fichier PDF dépasse 25 MB.');
-                return;
-            }
-            setFormError(null);
-            setActiveSubject(prev => ({ ...prev, file }));
-        }
-    };
 
     const handleModalSubmit = async (e: FormEvent) => {
         e.preventDefault();
-        setFormError(null);
 
         // Champs requis
         if (!activeSubject.title || !activeSubject.moduleId || !activeSubject.universityId) {
-            setFormError('Veuillez renseigner le titre, le module et l’université.');
+            alert('Veuillez renseigner le titre, le module et l’université.');
             return;
         }
 
         try {
             setIsSubmitting(true);
 
-            // Helper pour upload PDF et récupérer l’URL publique
             const uploadIfNeeded = async (): Promise<string | null> => {
                 if (!activeSubject.file) return null;
                 const filename = `${Date.now()}_${activeSubject.file.name}`;
@@ -251,88 +215,40 @@ export function ManageSubjectsPage() {
                 return publicData.publicUrl || null;
             };
 
+            const maybeUrl = await uploadIfNeeded();
+            const payload: any = {
+                titre: activeSubject.title,
+                module_id: activeSubject.moduleId,
+                universite_id: activeSubject.universityId,
+                faculte_id: activeSubject.faculteId,
+                niveau_id: activeSubject.niveauId,
+                fichier_url: maybeUrl || null,
+                correction: activeSubject.correction ? String(activeSubject.correction) : null,
+                annee: activeSubject.year !== '' && activeSubject.year !== null ? Number(activeSubject.year) : null,
+            };
+
             if (activeSubject.id) {
                 // Mise à jour
-                const maybeUrl = await uploadIfNeeded();
-                const updatePayload: any = {
-                    titre: activeSubject.title,
-                    module_id: activeSubject.moduleId,
-                    universite_id: activeSubject.universityId,
-                };
-                if (activeSubject.year !== '' && activeSubject.year !== null) {
-                    updatePayload.annee = Number(activeSubject.year);
-                } else {
-                    updatePayload.annee = null;
-                }
-                updatePayload.correction = activeSubject.correction ? String(activeSubject.correction) : null;
-                if (maybeUrl) {
-                    updatePayload.fichier_url = maybeUrl;
-                }
                 const updateRes = await supabase
                     .from('sujets')
-                    .update(updatePayload)
+                    .update(payload)
                     .eq('id', activeSubject.id)
                     .select()
                     .single();
                 if (updateRes.error) throw updateRes.error;
-
-                const updated = updateRes.data;
-                const module = modules.find(m => m.id === updated.module_id);
-                const uni = universities.find(u => u.id === updated.universite_id);
-                setAllSubjects(prev => prev.map(s => s.id === activeSubject.id ? {
-                    id: updated.id,
-                    title: updated.titre || 'Sans titre',
-                    fileSize: s.fileSize,
-                    pdfUrl: updated.fichier_url || s.pdfUrl,
-                    moduleId: updated.module_id,
-                    moduleName: module?.name || '',
-                    universityId: updated.universite_id,
-                    universityName: uni?.name || '',
-                    correction: updated.correction ?? null,
-                    year: updated.annee ?? null,
-                } : s));
             } else {
                 // Ajout
-                if (!activeSubject.file) {
-                    setFormError('Le fichier PDF est requis pour l’ajout.');
-                    setIsSubmitting(false);
-                    return;
-                }
-                const publicUrl = await uploadIfNeeded();
                 const insertRes = await supabase
                     .from('sujets')
-                    .insert({
-                        titre: activeSubject.title,
-                        module_id: activeSubject.moduleId,
-                        universite_id: activeSubject.universityId,
-                        fichier_url: publicUrl,
-                        correction: activeSubject.correction ? String(activeSubject.correction) : null,
-                        annee: activeSubject.year !== '' && activeSubject.year !== null ? Number(activeSubject.year) : null,
-                        created_by: currentUserId
-                    })
+                    .insert({ ...payload, created_by: user?.id })
                     .select()
                     .single();
                 if (insertRes.error) throw insertRes.error;
-                const inserted = insertRes.data;
-                const module = modules.find(m => m.id === inserted.module_id);
-                const uni = universities.find(u => u.id === inserted.universite_id);
-                const newEntry: SubjectInfo = {
-                    id: inserted.id,
-                    title: inserted.titre || 'Sans titre',
-                    fileSize: activeSubject.file ? `${(activeSubject.file.size / 1024).toFixed(2)} KB` : 'N/A',
-                    pdfUrl: inserted.fichier_url || '#',
-                    moduleId: inserted.module_id,
-                    moduleName: module?.name || '',
-                    universityId: inserted.universite_id,
-                    universityName: uni?.name || '',
-                    correction: inserted.correction ?? null,
-                    year: inserted.annee ?? null,
-                };
-                setAllSubjects(prev => [newEntry, ...prev]);
             }
+
             setIsModalOpen(false);
         } catch (err: any) {
-            setFormError(err?.message || 'Une erreur est survenue.');
+            alert(err?.message || 'Une erreur est survenue.');
         } finally {
             setIsSubmitting(false);
         }
@@ -354,6 +270,8 @@ export function ManageSubjectsPage() {
     const openModalForEdit = (subject: SubjectInfo) => {
         const module = modules.find(m => m.id === subject.moduleId);
         const university = universities.find(u => u.id === subject.universityId);
+        const faculte = faculties.find(f => f.id === subject.faculteId);
+        const niveau = levels.find(l => l.id === subject.niveauId);
         setActiveSubject({
             id: subject.id,
             title: subject.title,
@@ -363,7 +281,11 @@ export function ManageSubjectsPage() {
             universityName: university?.name || subject.universityName,
             file: null, // Ne pas pré-remplir le fichier
             correction: subject.correction || '',
-            year: subject.year ?? ''
+            year: subject.year ?? '',
+            faculteId: faculte?.id || '',
+            faculteName: faculte?.name || subject.faculteName,
+            niveauId: niveau?.id || '',
+            niveauName: niveau?.name || subject.niveauName,
         });
         setIsModalOpen(true);
     };
@@ -371,6 +293,10 @@ export function ManageSubjectsPage() {
     const openModalForAdd = () => {
         setActiveSubject(emptySubject);
         setIsModalOpen(true);
+    };
+
+    const openSubjectDetails = (subjectId: string) => {
+        navigate(`/admin/sujets/${subjectId}`); // Correction de la route
     };
 
     return (
@@ -421,7 +347,6 @@ export function ManageSubjectsPage() {
                             <th className="py-3 px-4 font-semibold text-gray-600">Titre du sujet</th>
                             <th className="py-3 px-4 font-semibold text-gray-600">Module</th>
                             <th className="py-3 px-4 font-semibold text-gray-600">Université</th>
-                            <th className="py-3 px-4 font-semibold text-gray-600">Taille</th>
                             <th className="py-3 px-4 font-semibold text-gray-600">Actions</th>
                         </tr>
                     </thead>
@@ -436,16 +361,13 @@ export function ManageSubjectsPage() {
                                 </td>
                                 <td className="py-3 px-4 text-gray-600">{subject.moduleName}</td>
                                 <td className="py-3 px-4 text-gray-600">{subject.universityName}</td>
-                                <td className="py-3 px-4 text-gray-500 font-mono">{subject.fileSize}</td>
                                 <td className="py-3 px-4 whitespace-nowrap">
-                                    <Link to={`/sujets/${subject.id}`} className="text-gray-500 hover:text-green-500 p-2" title="Voir le sujet"><EyeIcon className="h-5 w-5" /></Link>
                                     <button
-                                        onClick={() => handleProcessRAG(subject)}
-                                        disabled={!!processingSubjectId}
-                                        className={`p-2 ${processingSubjectId === subject.id ? 'text-yellow-500 animate-spin' : 'text-gray-500 hover:text-purple-500'}`}
-                                        title="Traiter pour l'IA (RAG)"
+                                        onClick={() => openSubjectDetails(subject.id)}
+                                        className="text-gray-500 hover:text-green-500 p-2"
+                                        title="Voir le sujet"
                                     >
-                                        <SparklesIcon className="h-5 w-5" />
+                                        <EyeIcon className="h-5 w-5" />
                                     </button>
                                     <button onClick={() => openModalForEdit(subject)} className="text-gray-500 hover:text-blue-500 p-2" title="Modifier"><PencilIcon className="h-5 w-5" /></button>
                                     <button onClick={() => setSubjectToDelete(subject)} className="text-gray-500 hover:text-red-500 p-2" title="Supprimer"><TrashIcon className="h-5 w-5" /></button>
@@ -482,78 +404,73 @@ export function ManageSubjectsPage() {
                     <div className="space-y-4">
                         <div>
                             <label htmlFor="title" className="block text-sm font-medium text-gray-700">Titre du sujet</label>
-                            <input type="text" name="title" id="title" required value={activeSubject.title} onChange={(e) => setActiveSubject(prev => ({ ...prev, title: e.target.value }))} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                            <input
+                                type="text"
+                                name="title"
+                                id="title"
+                                required
+                                value={activeSubject.title}
+                                onChange={(e) => setActiveSubject(prev => ({ ...prev, title: e.target.value }))}
+                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                            />
                         </div>
                         <div>
                             <label htmlFor="moduleId" className="block text-sm font-medium text-gray-700">Module</label>
                             <SearchableSelect
                                 options={modules}
                                 value={activeSubject.moduleName}
-                                onChange={(option: any) => setActiveSubject(prev => ({ ...prev, moduleId: option?.id || '', moduleName: option?.name || '', universityId: '', universityName: '' }))}
+                                onChange={(option: any) => setActiveSubject(prev => ({ ...prev, moduleId: option?.id || '', moduleName: option?.name || '' }))}
                                 placeholder="Rechercher un module..."
                             />
                         </div>
                         <div>
                             <label htmlFor="universityId" className="block text-sm font-medium text-gray-700">Université</label>
                             <SearchableSelect
-                                options={universitiesByModule[activeSubject.moduleId as ModuleId] || []}
+                                options={universities}
                                 value={activeSubject.universityName}
                                 onChange={(option: any) => setActiveSubject(prev => ({ ...prev, universityId: option?.id || '', universityName: option?.name || '' }))}
-                                disabled={!activeSubject.moduleId}
-                                placeholder={!activeSubject.moduleId ? "Sélectionnez d'abord un module" : "Rechercher une université..."}
+                                placeholder="Rechercher une université..."
                             />
                         </div>
                         <div>
-                            <label htmlFor="year" className="block text-sm font-medium text-gray-700">Année (optionnel)</label>
+                            <label htmlFor="faculteId" className="block text-sm font-medium text-gray-700">Faculté</label>
+                            <SearchableSelect
+                                options={faculties}
+                                value={activeSubject.faculteName}
+                                onChange={(option: any) => setActiveSubject(prev => ({ ...prev, faculteId: option?.id || '', faculteName: option?.name || '' }))}
+                                placeholder="Rechercher une faculté..."
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="niveauId" className="block text-sm font-medium text-gray-700">Niveau</label>
+                            <SearchableSelect
+                                options={levels}
+                                value={activeSubject.niveauName}
+                                onChange={(option: any) => setActiveSubject(prev => ({ ...prev, niveauId: option?.id || '', niveauName: option?.name || '' }))}
+                                placeholder="Rechercher un niveau..."
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="year" className="block text-sm font-medium text-gray-700">Année</label>
                             <input
                                 type="number"
                                 name="year"
                                 id="year"
-                                min={1900}
-                                max={2100}
-                                value={activeSubject.year as number | ''}
+                                value={activeSubject.year || ''}
                                 onChange={(e) => setActiveSubject(prev => ({ ...prev, year: e.target.value }))}
                                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                placeholder="Ex: 2023"
                             />
                         </div>
                         <div>
-                            <label htmlFor="correction" className="block text-sm font-medium text-gray-700">Correction (Markdown)</label>
+                            <label htmlFor="correction" className="block text-sm font-medium text-gray-700">Correction (HTML ou Texte)</label>
                             <textarea
                                 name="correction"
                                 id="correction"
-                                rows={6}
-                                value={(activeSubject as any).correction || ''}
+                                rows={4}
+                                value={activeSubject.correction || ''}
                                 onChange={(e) => setActiveSubject(prev => ({ ...prev, correction: e.target.value }))}
-                                placeholder="Saisissez la correction en Markdown (titres, listes, liens, tableaux...)"
                                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                             />
-                            <p className="mt-1 text-xs text-gray-500">Aperçu ci-dessous. Prend en charge GFM (listes, tableaux, etc.).</p>
-                            <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-md">
-                                <div className="prose prose-sm max-w-none">
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                        {(((activeSubject as any).correction || '') as string).trim()}
-                                    </ReactMarkdown>
-                                </div>
-                            </div>
-                        </div>
-                        <div>
-                            <label htmlFor="file" className="block text-sm font-medium text-gray-700">
-                                Fichier (PDF, JSON ou Markdown) {activeSubject.id && <span className="text-xs text-gray-500">(Optionnel: laisser vide pour ne pas changer)</span>}
-                            </label>
-                            <input
-                                type="file"
-                                name="file"
-                                id="file"
-                                required={!activeSubject.id} // Requis uniquement pour l'ajout
-                                accept=".pdf,.json,.md,application/pdf,application/json,text/markdown"
-                                onChange={handleModalFileChange}
-                                className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                            />
-                            {formError && (
-                                <p className="mt-2 text-sm text-red-600">{formError}</p>
-                            )}
-                            <p className="mt-1 text-xs text-gray-500">PDF, JSON ou Markdown (.md), taille maximale 25 MB.</p>
                         </div>
                     </div>
                     <div className="mt-6 flex justify-end space-x-3">
@@ -564,7 +481,13 @@ export function ManageSubjectsPage() {
                         >
                             Annuler
                         </button>
-                        <button type="submit" disabled={isSubmitting} className="bg-blue-600 disabled:bg-blue-300 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">{activeSubject.id ? 'Enregistrer' : 'Ajouter'}</button>
+                        <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="bg-blue-600 disabled:bg-blue-300 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            {activeSubject.id ? 'Enregistrer' : 'Ajouter'}
+                        </button>
                     </div>
                 </form>
             </Modal>
@@ -590,7 +513,12 @@ export function ManageSubjectsPage() {
                         >
                             Annuler
                         </button>
-                        <button onClick={handleDeleteSubject} className="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition-colors">Supprimer</button>
+                        <button
+                            onClick={handleDeleteSubject}
+                            className="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition-colors"
+                        >
+                            Supprimer
+                        </button>
                     </div>
                 </div>
             </Modal>

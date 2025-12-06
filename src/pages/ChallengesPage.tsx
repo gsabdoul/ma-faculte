@@ -16,8 +16,8 @@ interface Challenge {
     code: string;
     status: string;
     created_at: string;
-    subject: {
-        titre: string;
+    quiz: {
+        title: string;
     } | null;
     participant_count: number;
 }
@@ -43,7 +43,7 @@ export default function ChallengesPage() {
                         code,
                         status,
                         created_at,
-                        subject:subject_id(titre)
+                        quiz:quiz_id(title)
                     `)
                     .eq('creator_id', user.id)
                     .order('created_at', { ascending: false });
@@ -60,7 +60,7 @@ export default function ChallengesPage() {
 
                         return {
                             ...challenge,
-                            subject: Array.isArray(challenge.subject) && challenge.subject.length > 0 ? challenge.subject[0] : challenge.subject,
+                            quiz: Array.isArray(challenge.quiz) && challenge.quiz.length > 0 ? challenge.quiz[0] : challenge.quiz,
                             participant_count: count || 0
                         };
                     })
@@ -153,7 +153,7 @@ export default function ChallengesPage() {
                     </div>
                     <h2 className="text-2xl font-bold text-gray-800">Mode Multijoueur</h2>
                     <p className="text-gray-600 mt-2">
-                        Affrontez vos amis en temps réel sur des quiz !
+                        Affrontez vos amis en temps réel sur vos quiz !
                     </p>
                 </div>
 
@@ -170,7 +170,7 @@ export default function ChallengesPage() {
                                     <h3 className="text-lg font-bold">Créer un Challenge</h3>
                                 </div>
                                 <p className="text-blue-100 text-sm">
-                                    Choisissez un sujet et invitez vos amis
+                                    Choisissez un de vos quiz et invitez vos amis
                                 </p>
                             </div>
                             <ArrowRightIcon className="w-6 h-6" />
@@ -219,11 +219,11 @@ export default function ChallengesPage() {
                                     <div className="flex items-start justify-between mb-3">
                                         <div className="flex-1">
                                             <h4 className="font-bold text-gray-800 text-lg">
-                                                {challenge.subject?.titre || 'Sujet non disponible'}
+                                                {challenge.quiz?.title || 'Quiz non disponible'}
                                             </h4>
-                                            {!challenge.subject && (
+                                            {!challenge.quiz && (
                                                 <p className="text-xs text-orange-600 mt-1">
-                                                    ⚠️ Le sujet associé n'est plus disponible
+                                                    ⚠️ Le quiz associé n'est plus disponible
                                                 </p>
                                             )}
                                             <div className="flex items-center gap-3 mt-2 text-sm text-gray-600">
@@ -250,7 +250,7 @@ export default function ChallengesPage() {
                                             onClick={() => navigate(`/challenges/lobby/${challenge.id}`)}
                                             className="w-full bg-purple-600 text-white font-medium py-2 px-4 rounded-lg hover:bg-purple-700 transition-colors"
                                         >
-                                            {challenge.status === 'waiting' ? 'Rejoindre le lobby' : 'Voir la partie'}
+                                            {challenge.status === 'waiting' ? 'Gérer le challenge' : 'Voir la partie'}
                                         </button>
                                     ) : (
                                         <button

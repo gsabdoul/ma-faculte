@@ -93,8 +93,8 @@ export function Carousel({ items }: CarouselProps) {
   return (
     // Le "rectangle" qui contient le carrousel
     <div
-      className="relative w-full h-40 sm:h-56 md:h-72 lg:h-96 overflow-hidden rounded-lg shadow-lg select-none"
-      style={{ touchAction: 'pan-y' }}
+      className="relative w-full overflow-hidden rounded-lg shadow-lg select-none"
+      style={{ touchAction: 'pan-y', aspectRatio: '1920/400' }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

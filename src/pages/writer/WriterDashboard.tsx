@@ -11,10 +11,12 @@ import {
     TrashIcon,
     XMarkIcon,
     FolderIcon,
+    EyeIcon,
 } from '@heroicons/react/24/outline';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '../../supabase';
 import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
+import { getSubjectTitle } from '../../utils/subjectUtils';
 
 interface Creation {
     id: string;
@@ -69,7 +71,7 @@ export function WriterDashboard() {
             setLoading(true);
             try {
                 const [subjects, books, drives] = await Promise.all([
-                    supabase.from('sujets').select('id, titre, created_at').eq('created_by', user.id),
+                    supabase.from('sujets').select('id, created_at, modules(nom), universites(nom), annee, session').eq('created_by', user.id),
                     supabase.from('livres').select('id, titre, created_at').eq('created_by', user.id),
                     supabase.from('drives').select('id, titre, created_at').eq('created_by', user.id),
                 ]);
@@ -79,7 +81,12 @@ export function WriterDashboard() {
                 if (drives.error) throw drives.error;
 
                 const combinedCreations: Creation[] = [
-                    ...(subjects.data || []).map(item => ({ ...item, type: 'Sujet' as const })),
+                    ...(subjects.data || []).map(item => ({
+                        id: item.id,
+                        titre: getSubjectTitle(item),
+                        created_at: item.created_at,
+                        type: 'Sujet' as const
+                    })),
                     ...(books.data || []).map(item => ({ ...item, type: 'Livre' as const })),
                     ...(drives.data || []).map(item => ({ ...item, type: 'Drive' as const })),
                 ];
@@ -227,6 +234,17 @@ export function WriterDashboard() {
                                                 <ClockIcon className="w-4 h-4 mr-1.5" />
                                                 {formatDate(item.created_at)}
                                             </p>
+
+                                            {item.type === 'Sujet' && (
+                                                <Link
+                                                    to={`/writer/sujets/${item.id}`}
+                                                    className="text-gray-400 hover:text-indigo-600 p-2 rounded-full"
+                                                    title="Gérer les questions"
+                                                >
+                                                    <EyeIcon className="w-5 h-5" />
+                                                </Link>
+                                            )}
+
                                             <Link to={getEditLink(item)} className="text-gray-400 hover:text-blue-600 p-2 rounded-full">
                                                 <PencilIcon className="w-5 h-5" />
                                             </Link>

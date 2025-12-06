@@ -14,10 +14,10 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
       <div
-        className="bg-white rounded-xl shadow-2xl w-full max-w-md transform transition-all"
+        className="bg-white rounded-xl shadow-2xl w-full max-w-3xl transform transition-all flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center p-4 border-b border-gray-200">
+        <div className="flex justify-between items-center p-4 border-b border-gray-200 flex-shrink-0">
           <h2 className="text-lg font-bold text-gray-800">{title}</h2>
           <button
             onClick={onClose}
@@ -26,7 +26,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
             <XMarkIcon className="w-6 h-6" />
           </button>
         </div>
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto">
           {children}
         </div>
       </div>

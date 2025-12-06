@@ -18,14 +18,16 @@ interface University {
 
 export function AddSubjectPage() {
     const navigate = useNavigate();
-    const { user } = useUser(); // Get current user for created_by
-    const [title, setTitle] = useState('');
+    const { user } = useUser();
+
     const [selectedModuleId, setSelectedModuleId] = useState('');
     const [selectedModuleName, setSelectedModuleName] = useState('');
     const [selectedUniversityId, setSelectedUniversityId] = useState('');
     const [selectedUniversityName, setSelectedUniversityName] = useState('');
-    const [file, setFile] = useState<File | null>(null);
     const [year, setYear] = useState<string>('');
+    const [session, setSession] = useState<'Normale' | 'Rattrapage'>('Normale');
+    const [correction, setCorrection] = useState('');
+
     const [modules, setModules] = useState<Module[]>([]);
     const [universities, setUniversities] = useState<University[]>([]);
     const [loading, setLoading] = useState(true);
@@ -49,8 +51,8 @@ export function AddSubjectPage() {
                 if (modsRes.error) throw modsRes.error;
                 if (unisRes.error) throw unisRes.error;
 
-                setModules(modsRes.data.map((m: { id: any; nom: any; }) => ({ id: m.id, name: m.nom })));
-                setUniversities(unisRes.data.map((u: { id: any; nom: any; }) => ({ id: u.id, name: u.nom })));
+                setModules(modsRes.data.map((m: any) => ({ id: m.id, name: m.nom })));
+                setUniversities(unisRes.data.map((u: any) => ({ id: u.id, name: u.nom })));
             } catch (err: any) {
                 setError(err.message);
             } finally {
@@ -66,19 +68,8 @@ export function AddSubjectPage() {
             setError("Vous devez être connecté pour ajouter un sujet.");
             return;
         }
-        if (!title || !selectedModuleId || !selectedUniversityId || !file) {
-            setError("Veuillez remplir tous les champs et sélectionner un fichier.");
-            return;
-        }
-
-        // Validation basique du fichier PDF
-        if (file && file.type !== 'application/pdf') {
-            setError('Le fichier doit être un PDF.');
-            return;
-        }
-        const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
-        if (file && file.size > MAX_SIZE) {
-            setError('Le fichier dépasse la taille maximale autorisée (25MB).');
+        if (!selectedModuleId || !selectedUniversityId) {
+            setError("Veuillez sélectionner un module et une université.");
             return;
         }
 
@@ -86,13 +77,7 @@ export function AddSubjectPage() {
         setError(null);
 
         try {
-            // 1. Upload du fichier PDF
-            const filePath = `public/sujets/${Date.now()}_${file.name.replace(/\s/g, '_')}`;
-            const { error: uploadError } = await supabase.storage.from('sujets').upload(filePath, file);
-            if (uploadError) throw uploadError;
-            const publicUrl = supabase.storage.from('sujets').getPublicUrl(filePath).data.publicUrl;
-
-            // 2. Récupérer faculte_id et niveau_id du profil de l'utilisateur
+            // Récupérer faculte_id et niveau_id du profil de l'utilisateur
             const { data: profileData, error: profileError } = await supabase
                 .from('profiles')
                 .select('faculte_id, niveau_id')
@@ -102,17 +87,16 @@ export function AddSubjectPage() {
             if (profileError) throw profileError;
             if (!profileData) throw new Error("Profil utilisateur introuvable.");
 
-            // 3. Insérer le sujet dans la base de données
+            // Insérer le sujet dans la base de données
             const { error: insertError } = await supabase.from('sujets').insert({
-                titre: title,
                 module_id: selectedModuleId,
                 universite_id: selectedUniversityId,
                 faculte_id: profileData.faculte_id,
                 niveau_id: profileData.niveau_id,
-                fichier_url: publicUrl,
-                taille_fichier: file.size,
-                created_by: user.id, // Ajout de l'ID de l'utilisateur
+                created_by: user.id,
                 annee: year ? Number(year) : null,
+                session: session,
+                correction: correction || null,
             });
 
             if (insertError) throw insertError;
@@ -125,13 +109,13 @@ export function AddSubjectPage() {
             });
 
             // Reset form
-            setTitle('');
             setSelectedModuleId('');
             setSelectedModuleName('');
             setSelectedUniversityId('');
             setSelectedUniversityName('');
-            setFile(null);
             setYear('');
+            setSession('Normale');
+            setCorrection('');
 
         } catch (err: any) {
             setError(err.message || "Une erreur est survenue lors de l'ajout du sujet.");
@@ -161,19 +145,39 @@ export function AddSubjectPage() {
                 {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
                 <form onSubmit={handleSubmit} className="space-y-6 bg-white p-6 rounded-xl shadow-md">
                     <div>
-                        <label htmlFor="title" className="block text-sm font-medium text-gray-700">Titre du sujet</label>
-                        <input
-                            type="text"
-                            name="title"
-                            id="title"
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            required
-                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        <label htmlFor="moduleId" className="block text-sm font-medium text-gray-700 mb-2">
+                            Module <span className="text-red-500">*</span>
+                        </label>
+                        <SearchableSelect
+                            options={modules.map(m => ({ id: m.id, name: m.name }))}
+                            value={selectedModuleName}
+                            onChange={(option: any) => {
+                                setSelectedModuleId(option?.id || '');
+                                setSelectedModuleName(option?.name || '');
+                            }}
+                            placeholder="Sélectionner un module..."
                         />
                     </div>
+
                     <div>
-                        <label htmlFor="year" className="block text-sm font-medium text-gray-700">Année (optionnel)</label>
+                        <label htmlFor="universityId" className="block text-sm font-medium text-gray-700 mb-2">
+                            Université <span className="text-red-500">*</span>
+                        </label>
+                        <SearchableSelect
+                            options={universities.map(u => ({ id: u.id, name: u.name }))}
+                            value={selectedUniversityName}
+                            onChange={(option: any) => {
+                                setSelectedUniversityId(option?.id || '');
+                                setSelectedUniversityName(option?.name || '');
+                            }}
+                            placeholder="Sélectionner une université..."
+                        />
+                    </div>
+
+                    <div>
+                        <label htmlFor="year" className="block text-sm font-medium text-gray-700 mb-2">
+                            Année
+                        </label>
                         <input
                             type="number"
                             name="year"
@@ -186,46 +190,42 @@ export function AddSubjectPage() {
                             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                         />
                     </div>
+
                     <div>
-                        <label htmlFor="moduleId" className="block text-sm font-medium text-gray-700">Module</label>
-                        <SearchableSelect
-                            options={modules.map(m => ({ id: m.id, name: m.name }))}
-                            value={selectedModuleName}
-                            onChange={(option: any) => {
-                                setSelectedModuleId(option?.id || '');
-                                setSelectedModuleName(option?.name || '');
-                            }}
-                            placeholder="Sélectionner un module..."
+                        <label htmlFor="session" className="block text-sm font-medium text-gray-700 mb-2">
+                            Session <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                            name="session"
+                            id="session"
+                            value={session}
+                            onChange={(e) => setSession(e.target.value as 'Normale' | 'Rattrapage')}
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        >
+                            <option value="Normale">Normale</option>
+                            <option value="Rattrapage">Rattrapage</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label htmlFor="correction" className="block text-sm font-medium text-gray-700 mb-2">
+                            Correction (optionnel)
+                        </label>
+                        <textarea
+                            name="correction"
+                            id="correction"
+                            rows={4}
+                            value={correction}
+                            onChange={(e) => setCorrection(e.target.value)}
+                            placeholder="Entrez la correction ou des indices ici..."
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                         />
                     </div>
-                    <div>
-                        <label htmlFor="universityId" className="block text-sm font-medium text-gray-700">Université</label>
-                        <SearchableSelect
-                            options={universities.map(u => ({ id: u.id, name: u.name }))}
-                            value={selectedUniversityName}
-                            onChange={(option: any) => {
-                                setSelectedUniversityId(option?.id || '');
-                                setSelectedUniversityName(option?.name || '');
-                            }}
-                            placeholder="Sélectionner une université..."
-                        />
-                    </div>
-                    <div>
-                        <label htmlFor="file" className="block text-sm font-medium text-gray-700">Fichier PDF</label>
-                        <input
-                            type="file"
-                            name="file"
-                            id="file"
-                            accept="application/pdf"
-                            onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
-                            required
-                            className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                        />
-                    </div>
+
                     <div className="pt-4">
                         <button
                             type="submit"
-                            disabled={submitting || !title || !selectedModuleId || !selectedUniversityId || !file}
+                            disabled={submitting || !selectedModuleId || !selectedUniversityId}
                             className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:bg-blue-300 disabled:cursor-not-allowed"
                         >
                             {submitting ? 'Ajout en cours...' : 'Ajouter le Sujet'}

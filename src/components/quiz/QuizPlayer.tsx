@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabase';
-import { ChevronLeftIcon, ChevronRightIcon, CheckCircleIcon, BookmarkIcon } from '@heroicons/react/24/solid';
+import { ChevronLeftIcon, ChevronRightIcon, CheckCircleIcon, BookmarkIcon, PencilSquareIcon } from '@heroicons/react/24/solid';
 import { AddToPlaylistModal } from '../playlist/AddToPlaylistModal';
+import { Modal } from '../ui/Modal';
 
 interface Question {
     id: number;
@@ -25,21 +26,49 @@ interface QuizPlayerProps {
     questions: Question[];
     onBack: () => void;
     mode?: 'practice' | 'playlist' | 'challenge';
+    initialState?: {
+        answers: Record<number, any>;
+        currentIndex: number;
+        elapsedTime: number;
+        submittedQROC?: Record<number, boolean>;
+        qrocSelfEval?: Record<number, boolean>;
+    };
+    onStateChange?: (state: any) => void;
     onComplete?: (score: number, total: number) => void;
 }
 
-export default function QuizPlayer({ questions, onBack, mode = 'practice', onComplete }: QuizPlayerProps) {
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const [answers, setAnswers] = useState<Record<number, any>>({});
-    const [submittedQROC, setSubmittedQROC] = useState<Record<number, boolean>>({});
-    const [qrocSelfEval, setQrocSelfEval] = useState<Record<number, boolean>>({});
+export default function QuizPlayer({ questions, onBack, mode = 'practice', onComplete, initialState, onStateChange }: QuizPlayerProps) {
+    const [currentIndex, setCurrentIndex] = useState(initialState?.currentIndex || 0);
+    const [answers, setAnswers] = useState<Record<number, any>>(initialState?.answers || {});
+    const [submittedQROC, setSubmittedQROC] = useState<Record<number, boolean>>(initialState?.submittedQROC || {});
+    const [qrocSelfEval, setQrocSelfEval] = useState<Record<number, boolean>>(initialState?.qrocSelfEval || {});
     const [showResults, setShowResults] = useState(false);
     const [showCorrection, setShowCorrection] = useState(false);
-    const [elapsedTime, setElapsedTime] = useState(0);
+    const [elapsedTime, setElapsedTime] = useState(initialState?.elapsedTime || 0);
     const [timerActive, setTimerActive] = useState(true);
     const [showPlaylistModal, setShowPlaylistModal] = useState(false);
     const [selectedQuestionForPlaylist, setSelectedQuestionForPlaylist] = useState<number | null>(null);
     const [savedQuestionIds, setSavedQuestionIds] = useState<Set<number>>(new Set());
+
+    // Notes Logic
+    const [userNotes, setUserNotes] = useState<Record<number, string>>({}); // valid question_id -> note content
+    const [noteModalOpen, setNoteModalOpen] = useState(false);
+    const [currentNoteQuestionId, setCurrentNoteQuestionId] = useState<number | null>(null);
+    const [currentNoteContent, setCurrentNoteContent] = useState("");
+
+    // Notify state changes
+    useEffect(() => {
+        if (onStateChange) {
+            onStateChange({
+                currentIndex,
+                answers,
+                elapsedTime,
+                submittedQROC,
+                qrocSelfEval,
+                isCompleted: showResults // Use this to mark completion
+            });
+        }
+    }, [currentIndex, answers, elapsedTime, submittedQROC, qrocSelfEval, showResults, onStateChange]);
 
     useEffect(() => {
         const fetchSavedQuestions = async () => {
@@ -67,6 +96,93 @@ export default function QuizPlayer({ questions, onBack, mode = 'practice', onCom
             fetchSavedQuestions();
         }
     }, [questions]);
+
+    // Fetch Notes when showing correction
+    useEffect(() => {
+        if (!showCorrection) return;
+
+        const fetchNotes = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const qIds = questions.map(q => q.id);
+                const { data, error } = await supabase
+                    .from('user_notes')
+                    .select('question_id, content')
+                    .eq('user_id', user.id)
+                    .in('question_id', qIds);
+
+                if (error) throw error;
+
+                const notesMap: Record<number, string> = {};
+                data?.forEach(n => {
+                    notesMap[n.question_id] = n.content;
+                });
+                setUserNotes(notesMap);
+            } catch (err) {
+                console.error("Error fetching notes", err);
+            }
+        };
+        fetchNotes();
+    }, [showCorrection, questions]);
+
+
+    const openNoteModal = (questionId: number) => {
+        setCurrentNoteQuestionId(questionId);
+        setCurrentNoteContent(userNotes[questionId] || "");
+        setNoteModalOpen(true);
+    };
+
+    const handleSaveNote = async () => {
+        if (!currentNoteQuestionId) return;
+
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            if (!currentNoteContent.trim()) {
+                // Delete if empty
+                if (userNotes[currentNoteQuestionId]) {
+                    await supabase.from('user_notes').delete()
+                        .eq('user_id', user.id)
+                        .eq('question_id', currentNoteQuestionId);
+
+                    const newNotes = { ...userNotes };
+                    delete newNotes[currentNoteQuestionId];
+                    setUserNotes(newNotes);
+                }
+            } else {
+                // Upsert
+                // We need to check if it exists or use upsert if constraint exists.
+                // Since we don't have a unique constraint on (user_id, question_id) in the migration I wrote (oops, I should verify constraints),
+                // I will do a check or delete-insert. Actually, I didn't add a unique constraint.
+                // Let's check first.
+
+                const { data: existing } = await supabase.from('user_notes')
+                    .select('id')
+                    .eq('user_id', user.id)
+                    .eq('question_id', currentNoteQuestionId)
+                    .single();
+
+                if (existing) {
+                    await supabase.from('user_notes').update({ content: currentNoteContent, updated_at: new Date().toISOString() }).eq('id', existing.id);
+                } else {
+                    await supabase.from('user_notes').insert({
+                        user_id: user.id,
+                        question_id: currentNoteQuestionId,
+                        content: currentNoteContent
+                    });
+                }
+
+                setUserNotes(prev => ({ ...prev, [currentNoteQuestionId]: currentNoteContent }));
+            }
+            setNoteModalOpen(false);
+        } catch (err) {
+            console.error("Error saving note", err);
+            alert("Erreur lors de l'enregistrement de la note");
+        }
+    };
 
     // Timer effect
     useEffect(() => {
@@ -337,6 +453,23 @@ export default function QuizPlayer({ questions, onBack, mode = 'practice', onCom
                                         <p className="text-gray-700 text-sm">{question.explanation}</p>
                                     </div>
                                 )}
+
+                                {/* Note Button */}
+                                <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
+                                    <button
+                                        onClick={() => openNoteModal(question.id)}
+                                        className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-blue-600 transition-colors"
+                                    >
+                                        <PencilSquareIcon className="w-5 h-5" />
+                                        {userNotes[question.id] ? "Modifier ma note" : "Ajouter une note"}
+                                    </button>
+                                </div>
+                                {userNotes[question.id] && (
+                                    <div className="mt-2 bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                                        <p className="text-xs font-bold text-yellow-800 mb-1">Ma Note :</p>
+                                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{userNotes[question.id]}</p>
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
@@ -348,6 +481,32 @@ export default function QuizPlayer({ questions, onBack, mode = 'practice', onCom
                         Retour aux résultats
                     </button>
                 </main>
+
+                <Modal isOpen={noteModalOpen} onClose={() => setNoteModalOpen(false)} title="Mes Notes">
+                    <div className="space-y-4">
+                        <p className="text-sm text-gray-500">Ajoutez une note personnelle pour cette question (astuce, rappel, etc.).</p>
+                        <textarea
+                            value={currentNoteContent}
+                            onChange={(e) => setCurrentNoteContent(e.target.value)}
+                            className="w-full h-32 border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            placeholder="Écrivez votre note ici..."
+                        />
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => setNoteModalOpen(false)}
+                                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                onClick={handleSaveNote}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                            >
+                                Enregistrer
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
             </div>
         );
     }

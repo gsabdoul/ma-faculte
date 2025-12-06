@@ -206,7 +206,7 @@ export function ManageCarouselPage() {
                                         {item.active ? 'Actif' : 'Inactif'}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium min-w-[100px]">
                                     <button onClick={() => handleOpenModal(item)} className="text-indigo-600 hover:text-indigo-900 mr-4"><PencilIcon className="h-5 w-5" /></button>
                                     <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900"><TrashIcon className="h-5 w-5" /></button>
                                 </td>
