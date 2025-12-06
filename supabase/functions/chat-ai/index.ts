@@ -1,6 +1,7 @@
 // @ts-ignore
 declare const Deno: any;
 
+// @deno-types="npm:@supabase/supabase-js@2"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY');
@@ -136,6 +137,14 @@ Tu ne dois JAMAIS inventer de contenu qui n'existe pas dans le contexte fourni.
 - Si on te demande le contenu d'un document PDF et que tu n'as pas le texte extrait ci-dessous, dis : "Je n'ai pas accès au contenu de ce document pour le moment."
 - Ne génère pas de faux texte de loi, de fausses questions d'examen ou de faux résumés.
 
+## Style de Réponse
+- **Sois concis et interactif.** Garde tes réponses initiales courtes (3-5 phrases maximum).
+- **Ne liste pas tout d'un coup.** Pour une question large (comme "aide-moi à réviser"), ne donne pas une longue liste de stratégies.
+- **Propose un plan.** Présente plutôt les thèmes que tu peux aborder (ex: "Je peux te donner des stratégies de révision, des ressources pertinentes ou des méthodes actives. Qu'est-ce qui t'intéresse le plus ?").
+- **Attends que l'utilisateur choisisse.** Laisse l'étudiant te guider sur le point qu'il veut approfondir.
+- **Découpe l'information.** Donne l'information point par point, pas en un seul bloc.
+- **Utilise des puces (`- ` ou ` * `) pour les listes dans le corps de tes messages.** Ne numérote que les questions dans la section SUGGESTIONS.
+
 ## Ton rôle
 - Aide les étudiants dans leurs révisions et apprentissage
 - Réponds à leurs questions académiques
@@ -143,11 +152,12 @@ Tu ne dois JAMAIS inventer de contenu qui n'existe pas dans le contexte fourni.
 - Reste dans le contexte universitaire burkinabé
 - Adapte tes réponses au niveau d'étude de l'étudiant
 - Utilise le contenu des livres/cours disponibles pour enrichir tes réponses
-- À la fin de tes réponses, propose souvent 3 questions courtes de suivi pertinentes, formatées exactement comme ceci :
+- À la fin de tes réponses, propose 3 questions de suivi pertinentes. Demande à l'utilisateur de répondre avec le numéro de son choix. Formate les questions exactement comme ceci :
 [SUGGESTIONS]
 1. Question 1 ?
 2. Question 2 ?
-3. Question 3 ?`;
+3. Question 3 ?
+`;
 
         if (userContext) {
             systemInstruction += `\n\n## Contexte de l'étudiant actuel
@@ -206,7 +216,7 @@ ${truncatedContent}
                 'X-Title': 'Ma Faculte',
             },
             body: JSON.stringify({
-                model: "x-ai/grok-4.1-fast:free", // Or google/gemini-flash-1.5
+                model: body.model || "google/gemini-flash-1.5", // Utilise le modèle du client ou un fallback
                 messages: openRouterMessages,
                 stream: true,
                 temperature: 0.5, // Lower temperature for more factual answers

@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../supabase';
-import { PaperAirplaneIcon, PaperClipIcon, Bars3Icon, XMarkIcon, PlusIcon, PencilIcon, TrashIcon, CheckIcon, ClipboardDocumentIcon, StopIcon } from '@heroicons/react/24/outline';
+import { PaperAirplaneIcon, PaperClipIcon, Bars3Icon, XMarkIcon, PlusIcon, PencilIcon, TrashIcon, CheckIcon, ClipboardDocumentIcon, StopIcon, ArrowDownIcon } from '@heroicons/react/24/outline';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-
+// Le modèle d'IA à utiliser. Modifiez cette valeur pour changer de modèle.
+const AI_MODEL = 'amazon/nova-2-lite-v1:free';
 
 export function ChatPage() {
   const [message, setMessage] = useState('');
@@ -16,6 +17,7 @@ export function ChatPage() {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
 
@@ -28,6 +30,7 @@ export function ChatPage() {
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [editMessageContent, setEditMessageContent] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   const [userContext, setUserContext] = useState<any>(null);
 
@@ -191,6 +194,125 @@ export function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const handleScrollToBottomClick = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+  };
+
+  const handleScroll = () => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      // Affiche le bouton si l'utilisateur a remonté de plus de 300px
+      const isScrolledUp = scrollHeight - scrollTop > clientHeight + 300;
+      setShowScrollToBottom(isScrolledUp);
+    }
+  };
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    container?.addEventListener('scroll', handleScroll);
+    return () => {
+      container?.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
+  const streamAIResponse = async (conversationId: string, messagesForEdge: { sender: 'user' | 'ai'; text: string }[]): Promise<number | null> => {
+    setIsLoading(true);
+    abortControllerRef.current = new AbortController();
+
+    try {
+      const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+      if (!apiKey) {
+        throw new Error("La clé API OpenRouter n'est pas configurée. Vérifiez votre fichier .env");
+      }
+
+      const edgeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-ai`;
+      const response = await fetch(edgeUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          messages: messagesForEdge,
+          userContext,
+          subjectContext,
+          model: AI_MODEL,
+        }),
+        signal: abortControllerRef.current.signal,
+      });
+
+      console.log('Edge Function Response Status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log('Error Response Text:', errorText);
+        throw new Error(`Edge Function Error ${response.status}: ${errorText}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No reader available');
+
+      const decoder = new TextDecoder();
+      const aiMessageId = Date.now();
+      let fullAiResponse = '';
+      setMessages((prev) => [...prev, { id: aiMessageId, text: 'Soukma réfléchit...', sender: 'ai' }]);
+
+      let done = false;
+      while (!done) {
+        const { value, done: doneReading } = await reader.read();
+        done = doneReading;
+
+        if (value) {
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data:')) {
+              const data = line.slice(5).trim();
+              if (data === '[DONE]') continue;
+
+              try {
+                const parsed = JSON.parse(data);
+                const content = parsed.text;
+                if (content) {
+                  const isFirstChunk = fullAiResponse === '';
+                  fullAiResponse += content;
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === aiMessageId
+                        ? { ...msg, text: isFirstChunk ? content : msg.text + content }
+                        : msg
+                    )
+                  );
+                }
+              } catch (err) {
+                // Ignore parse errors for partial chunks
+              }
+            }
+          }
+        }
+      }
+
+      // Save final AI response
+      const { data: savedAiMessage } = await supabase.from('messages').insert({
+        conversation_id: conversationId,
+        user_id: userId,
+        content: fullAiResponse,
+        is_ai: true
+      }).select().single();
+
+      if (savedAiMessage) {
+        setMessages((prev) => prev.map((msg) => msg.id === aiMessageId ? { ...msg, id: savedAiMessage.id, text: fullAiResponse } : msg));
+        return savedAiMessage.id;
+      }
+      return null;
+    } finally {
+      setIsLoading(false);
+      abortControllerRef.current = null;
+    }
+  };
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -211,11 +333,6 @@ export function ChatPage() {
       setIsLoading(true);
 
       try {
-        const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-        if (!apiKey) {
-          throw new Error("La clé API OpenRouter n'est pas configurée. Vérifiez votre fichier .env");
-        }
-        console.log("API Key present:", !!apiKey); // Debug log (do not log the actual key)
 
         let conversationId = currentConversationId;
 
@@ -302,141 +419,63 @@ export function ChatPage() {
           text: msg.text,
         }));
 
-        // Create AbortController for stop functionality
-        abortControllerRef.current = new AbortController();
+        if (conversationId) {
+          const finalAiMessageId = await streamAIResponse(conversationId, messagesForEdge);
 
-        const edgeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-ai`;
-        const response = await fetch(edgeUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            messages: messagesForEdge,
-            userContext,
-            subjectContext,
-          }),
-          signal: abortControllerRef.current.signal,
-        });
+          // After streaming is complete, parse suggestions from the AI response
+          if (finalAiMessageId) {
+            setMessages((prev) => {
+              const lastMsg = prev.find(m => m.id === finalAiMessageId);
+              if (lastMsg && lastMsg.text) {
+                const suggestionMatch = lastMsg.text.match(/\[SUGGESTIONS\]\s*\n([\s\S]*?)(?:\n\n|$)/);
+                if (suggestionMatch) {
+                  const suggestionsText = suggestionMatch[1];
+                  const suggestions = suggestionsText
+                    .split('\n')
+                    .filter(line => line.trim())
+                    .map(line => line.replace(/\[SUGGESTIONS\]\s*\n?/, '').trim()) // Conserver les numéros
+                    .filter(q => q.length > 0)
+                    .slice(0, 3);
 
-        console.log('Edge Function Response Status:', response.status);
+                  // Remove the [SUGGESTIONS] block from the displayed text
+                  const cleanText = lastMsg.text.replace(/\[SUGGESTIONS\]\s*\n[\s\S]*$/, '').trim();
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.log('Error Response Text:', errorText);
-          throw new Error(`Edge Function Error ${response.status}: ${errorText}`);
-        }
-
-        // Stream the response
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-
-        // Add a placeholder AI message
-        const aiMessageId = Date.now();
-        let fullAiResponse = '';
-        setMessages((prev) => [...prev, { id: aiMessageId, text: '', sender: 'ai' }]);
-
-        if (!reader) throw new Error('No reader available');
-
-        let done = false;
-        while (!done) {
-          const { value, done: doneReading } = await reader.read();
-          done = doneReading;
-
-          if (value) {
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
-
-            for (const line of lines) {
-              if (line.startsWith('data:')) {
-                const data = line.slice(5).trim();
-                if (data === '[DONE]') {
-                  // Save AI response to database
-                  const { data: savedAiMessage } = await supabase.from('messages').insert({
-                    conversation_id: conversationId,
-                    user_id: userId,
-                    content: fullAiResponse,
-                    is_ai: true
-                  }).select().single();
-
-                  // Update with real ID from database
-                  if (savedAiMessage) {
-                    setMessages((prev) =>
-                      prev.map((msg) =>
-                        msg.id === aiMessageId
-                          ? { ...msg, id: savedAiMessage.id }
-                          : msg
-                      )
-                    );
-                  }
-                  setIsLoading(false);
-                  return;
-                }
-
-                try {
-                  const parsed = JSON.parse(data);
-                  const content = parsed.text;
-                  if (content) {
-                    fullAiResponse += content;
-                    setMessages((prev) =>
-                      prev.map((msg) =>
-                        msg.id === aiMessageId
-                          ? { ...msg, text: msg.text + content }
-                          : msg
-                      )
-                    );
-                  }
-                } catch (err) {
-                  // Ignore parse errors for partial chunks
+                  return prev.map(msg =>
+                    msg.id === finalAiMessageId
+                      ? { ...msg, text: cleanText, suggestions }
+                      : msg
+                  );
                 }
               }
-            }
+              return prev;
+            });
           }
+        } else {
+          throw new Error("Impossible de démarrer la discussion, l'ID de conversation est manquant.");
         }
-
-        // After streaming is complete, parse suggestions from the AI response
-        setMessages((prev) => {
-          const lastMsg = prev[prev.length - 1];
-          if (lastMsg && lastMsg.id === aiMessageId && lastMsg.text) {
-            const suggestionMatch = lastMsg.text.match(/\[SUGGESTIONS\]\s*\n([\s\S]*?)(?:\n\n|$)/);
-            if (suggestionMatch) {
-              const suggestionsText = suggestionMatch[1];
-              const suggestions = suggestionsText
-                .split('\n')
-                .filter(line => line.trim())
-                .map(line => line.replace(/^\d+\.\s*/, '').trim())
-                .filter(q => q.length > 0)
-                .slice(0, 3);
-
-              // Remove the [SUGGESTIONS] block from the displayed text
-              const cleanText = lastMsg.text.replace(/\[SUGGESTIONS\]\s*\n[\s\S]*$/, '').trim();
-
-              return prev.map(msg =>
-                msg.id === aiMessageId
-                  ? { ...msg, text: cleanText, suggestions }
-                  : msg
-              );
-            }
-          }
-          return prev;
-        });
-
       } catch (error: any) {
         console.error('Error in chat flow:', error);
 
+        let errorMessage = `Erreur: ${error.message}`;
+        // Attempt to parse the error message for specific OpenRouter 404
+        if (error.message.includes('OpenRouter API Error: 404')) {
+          try {
+            const errorDetails = JSON.parse(error.message.split('Edge Function Error 500: ')[1]);
+            if (errorDetails.error?.message.includes('No endpoints found')) {
+              errorMessage = "Erreur: Le modèle d'IA demandé n'est pas disponible. Veuillez contacter l'administrateur.";
+            }
+          } catch (parseError) {
+            // Fallback to generic message if parsing fails
+          }
+        }
         // Don't show error message if user stopped generation
         if (error.name === 'AbortError') {
           console.log('Generation stopped by user');
         } else {
-          setMessages((prev) => [
-            ...prev,
-            { id: Date.now() + 2, text: `Erreur: ${error.message}`, sender: 'ai' },
-          ]);
+          setMessages((prev) => [...prev, { id: Date.now() + 2, text: errorMessage, sender: 'ai' }]);
         }
       } finally {
         setIsLoading(false);
-        abortControllerRef.current = null;
       }
     }
   };
@@ -620,10 +659,6 @@ export function ChatPage() {
       setMessages(updatedMessages);
 
       // Directly regenerate AI response
-      const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-      if (!apiKey) {
-        throw new Error("La clé API OpenRouter n'est pas configurée.");
-      }
 
       // Build messages for AI
       const filteredMessages = updatedMessages.filter((m) => {
@@ -638,114 +673,37 @@ export function ChatPage() {
         text: msg.text,
       }));
 
-      // Create AbortController
-      abortControllerRef.current = new AbortController();
+      if (currentConversationId) {
+        const finalAiMessageId = await streamAIResponse(currentConversationId, messagesForEdge);
 
-      const edgeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-ai`;
-      const response = await fetch(edgeUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          messages: messagesForEdge,
-          userContext,
-          subjectContext,
-        }),
-        signal: abortControllerRef.current.signal,
-      });
+        // Parse suggestions
+        if (finalAiMessageId) {
+          setMessages((prev) => {
+            const lastMsg = prev.find(m => m.id === finalAiMessageId);
+            if (lastMsg && lastMsg.text) {
+              const suggestionMatch = lastMsg.text.match(/\[SUGGESTIONS\]\s*\n([\s\S]*?)(?:\n\n|$)/);
+              if (suggestionMatch) {
+                const suggestionsText = suggestionMatch[1];
+                const suggestions = suggestionsText
+                  .split('\n')
+                  .filter(line => line.trim())
+                  .map(line => line.replace(/\[SUGGESTIONS\]\s*\n?/, '').trim()) // Conserver les numéros
+                  .filter(q => q.length > 0)
+                  .slice(0, 3);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Edge Function Error ${response.status}: ${errorText}`);
-      }
+                const cleanText = lastMsg.text.replace(/\[SUGGESTIONS\]\s*\n[\s\S]*$/, '').trim();
 
-      // Stream the response
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      const aiMessageId = Date.now();
-      let fullAiResponse = '';
-      setMessages((prev) => [...prev, { id: aiMessageId, text: '', sender: 'ai' }]);
-
-      if (!reader) throw new Error('No reader available');
-
-      let done = false;
-      while (!done) {
-        const { value, done: doneReading } = await reader.read();
-        done = doneReading;
-
-        if (value) {
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data:')) {
-              const data = line.slice(5).trim();
-              if (data === '[DONE]') {
-                // Save AI response to database
-                const { data: savedAiMessage } = await supabase.from('messages').insert({
-                  conversation_id: currentConversationId,
-                  user_id: userId,
-                  content: fullAiResponse,
-                  is_ai: true
-                }).select().single();
-
-                if (savedAiMessage) {
-                  setMessages((prev) =>
-                    prev.map((msg) =>
-                      msg.id === aiMessageId ? { ...msg, id: savedAiMessage.id } : msg
-                    )
-                  );
-                }
-                setIsLoading(false);
-                return;
-              }
-
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.text;
-                if (content) {
-                  fullAiResponse += content;
-                  setMessages((prev) =>
-                    prev.map((msg) =>
-                      msg.id === aiMessageId ? { ...msg, text: msg.text + content } : msg
-                    )
-                  );
-                }
-              } catch (err) {
-                // Ignore parse errors
+                return prev.map(msg =>
+                  msg.id === finalAiMessageId ? { ...msg, text: cleanText, suggestions } : msg
+                );
               }
             }
-          }
+            return prev;
+          });
         }
+      } else {
+        throw new Error("Impossible de mettre à jour la discussion, l'ID de conversation est manquant.");
       }
-
-      // Parse suggestions
-      setMessages((prev) => {
-        const lastMsg = prev[prev.length - 1];
-        if (lastMsg && lastMsg.id === aiMessageId && lastMsg.text) {
-          const suggestionMatch = lastMsg.text.match(/\[SUGGESTIONS\]\s*\n([\s\S]*?)(?:\n\n|$)/);
-          if (suggestionMatch) {
-            const suggestionsText = suggestionMatch[1];
-            const suggestions = suggestionsText
-              .split('\n')
-              .filter(line => line.trim())
-              .map(line => line.replace(/^\d+\.\s*/, '').trim())
-              .filter(q => q.length > 0)
-              .slice(0, 3);
-
-            const cleanText = lastMsg.text.replace(/\[SUGGESTIONS\]\s*\n[\s\S]*$/, '').trim();
-
-            return prev.map(msg =>
-              msg.id === aiMessageId ? { ...msg, text: cleanText, suggestions } : msg
-            );
-          }
-        }
-        return prev;
-      });
-
     } catch (error: any) {
       console.error('Error updating message:', error);
       if (error.name !== 'AbortError') {
@@ -756,7 +714,6 @@ export function ChatPage() {
       }
     } finally {
       setIsLoading(false);
-      abortControllerRef.current = null;
     }
   };
 
@@ -770,10 +727,10 @@ export function ChatPage() {
   );
 
   return (
-    <div className="flex min-h-[calc(100vh-5rem)] lg:h-[calc(100vh-5rem)] bg-white relative">
+    <div className="flex h-screen bg-white">
       {/* Panneau latéral pour l'historique */}
       <div className={`
-        fixed inset-y-0 left-0 z-20 w-80 bg-white shadow-lg transform transition-transform duration-300 ease-in-out
+        fixed inset-y-0 left-0 z-30 w-80 bg-white shadow-lg transform transition-transform duration-300 ease-in-out
         lg:relative lg:translate-x-0 lg:shadow-none lg:border-r lg:border-gray-200 lg:flex lg:flex-col
         ${isHistoryOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
@@ -869,16 +826,13 @@ export function ChatPage() {
 
       {/* Overlay pour mobile quand le menu est ouvert */}
       {isHistoryOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-10 lg:hidden"
-          onClick={() => setIsHistoryOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/10 backdrop-blur-sm z-20 lg:hidden" onClick={() => setIsHistoryOpen(false)} />
       )}
 
       {/* Zone principale de chat */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 h-screen relative">
         {/* En-tête avec le bouton d'historique (visible uniquement sur mobile) */}
-        <div className="flex items-center p-4 bg-white shadow-sm lg:hidden">
+        <div className="flex-shrink-0 flex items-center p-4 bg-white shadow-sm lg:hidden z-10 relative">
           <button
             onClick={() => setIsHistoryOpen(!isHistoryOpen)}
             className="p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -889,13 +843,13 @@ export function ChatPage() {
         </div>
 
         {/* En-tête Desktop (optionnel, pour garder le titre) */}
-        <div className="hidden lg:flex items-center p-4 bg-white border-b border-gray-100">
+        <div className="flex-shrink-0 hidden lg:flex items-center p-4 bg-white border-b border-gray-100 z-10 relative">
           <h1 className="text-xl font-bold">Soukma</h1>
         </div>
 
         {/* Bandeau de contexte sujet */}
         {subjectContext && (
-          <div className="bg-blue-50 border-b border-blue-100 p-2 flex justify-between items-center px-4">
+          <div className="flex-shrink-0 bg-blue-50 border-b border-blue-100 p-2 flex justify-between items-center px-4">
             <span className="text-sm text-blue-800 truncate">
               📄 Discussion sur : <strong>{subjectContext?.title}</strong>
             </span>
@@ -909,7 +863,7 @@ export function ChatPage() {
         )}
 
         {/* Zone d'affichage des messages */}
-        <div className="flex-grow overflow-y-auto p-4 flex flex-col space-y-4">
+        <div ref={scrollContainerRef} className="flex-grow overflow-y-auto p-4 flex flex-col space-y-4">
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-gray-500 space-y-6">
               <div className="text-center">
@@ -945,8 +899,29 @@ export function ChatPage() {
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           components={{
-                            pre: ({ node, ...props }) => <pre className="overflow-auto w-full my-2 bg-gray-800 text-white p-2 rounded" {...props} />,
-                            code: ({ node, ...props }) => <code className="bg-gray-200 text-red-500 px-1 rounded" {...props} />
+                            pre: ({ node, children, ...props }) => {
+                              const codeNode = node?.children[0];
+                              const hasLang = codeNode && codeNode.type === 'element' && codeNode.properties && ('className' in codeNode.properties);
+                              // Si le bloc de code a un langage spécifié (ex: ```js), on garde le style sombre.
+                              // Sinon, on utilise un style plus simple pour les schémas/diagrammes.
+                              if (hasLang) {
+                                return <pre className="overflow-auto w-full my-2 bg-gray-800 text-white p-3 rounded-md" {...props}>{children}</pre>;
+                              }
+                              return <pre className="overflow-auto w-full my-2 bg-gray-50 p-3 rounded-md text-gray-800" {...props}>{children}</pre>;
+                            },
+                            code: ({ node, inline, className, children, ...props }: any) => {
+                              // Appliquer le style rouge uniquement pour le code "inline"
+                              if (inline) {
+                                return <code className="bg-gray-200 text-red-500 px-1 rounded" {...props}>{children}</code>;
+                              }
+                              return <code className={className} {...props}>{children}</code>
+                            },
+                            hr: ({ node, ...props }) => <div className="my-4" {...props} />,
+                            table: ({ node, ...props }) => <table className="w-full my-4 border-collapse border border-gray-300" {...props} />,
+                            thead: ({ node, ...props }) => <thead className="bg-gray-100" {...props} />,
+                            th: ({ node, ...props }) => <th className="p-2 border border-gray-300 text-left font-semibold text-sm" {...props} />,
+                            td: ({ node, ...props }) => <td className="p-2 border border-gray-300 text-sm" {...props} />,
+                            tr: ({ node, ...props }) => <tr className="border-b border-gray-200" {...props} />
                           }}
                         >
                           {msg.text}
@@ -1072,15 +1047,27 @@ export function ChatPage() {
           )}
         </div>
 
+        {/* Bouton pour défiler vers le bas */}
+        {showScrollToBottom && (
+          <button
+            onClick={handleScrollToBottomClick}
+            className="absolute bottom-28 right-6 z-10 p-2 bg-blue-500 text-white rounded-full shadow-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-opacity animate-bounce"
+            title="Défiler vers le bas"
+          >
+            <ArrowDownIcon className="h-6 w-6" />
+          </button>
+        )}
+
+
         {/* AI Disclaimer */}
-        <div className="px-4 py-2 bg-yellow-50 border-t border-yellow-100">
+        <div className="flex-shrink-0 px-4 py-2 bg-yellow-50 border-t border-yellow-100">
           <p className="text-xs text-yellow-800 text-center">
             💡 L'IA peut faire des erreurs. Vérifiez les informations importantes.
           </p>
         </div>
 
         {/* Champ de saisie et bouton d'envoi */}
-        <div className="p-4 bg-white border-t border-gray-200">
+        <div className="flex-shrink-0 p-4 bg-white border-t border-gray-200">
           {/* Prévisualisation des fichiers joints */}
           {attachedFiles.length > 0 && (
             <div className="mb-3 flex flex-wrap gap-2">

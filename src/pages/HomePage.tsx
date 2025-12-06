@@ -17,9 +17,10 @@ import { QuizActionCard } from '../components/quiz/QuizActionCard';
 
 
 
-// Ratio 1920/400 = 4.8
+// Squelette du carrousel avec un ratio d'aspect réactif.
+// Hauteur fixe et réactive pour une meilleure consistance sur tous les écrans.
 const CarouselSkeleton = () => (
-    <div className="w-full bg-gray-200 rounded-xl animate-pulse" style={{ aspectRatio: '1920/400' }}></div>
+    <div className="w-full bg-gray-200 rounded-xl animate-pulse h-40 lg:h-52"></div>
 );
 
 
@@ -71,12 +72,14 @@ export function HomePage() {
                 if (error) throw error;
 
                 const items = data.map(item => ({
-                    id: item.id, // Gardé comme string (UUID)
-                    imageUrl: item.image_url,
+                    id: item.id,
+                    // Ajoute les paramètres de transformation directement à l'URL existante
+                    imageUrl: `${item.image_url}?width=1200&quality=80`,
                     alt: item.titre,
                     title: item.titre,
                     learnMoreUrl: item.lien || '#',
                 }));
+
                 setCarouselItems(items);
             } catch (err) {
                 console.error("Erreur lors du chargement du carrousel:", err);
@@ -93,7 +96,7 @@ export function HomePage() {
 
 
     return (
-        <div className="pb-20 bg-gray-50 min-h-screen">
+        <div className="bg-gray-50 h-full flex flex-col">
             {/* Bannière de mise à jour */}
             {updateAvailable && (
                 <div className="bg-blue-600 text-white px-4 py-3 flex items-center justify-between">
@@ -108,7 +111,7 @@ export function HomePage() {
             )}
 
             {/* Header avec angles arrondis */}
-            <header className="bg-gradient-to-br from-blue-600 to-blue-800 text-white px-4 sm:px-6 py-4 rounded-b-3xl shadow-lg">
+            <header className="bg-gradient-to-br from-blue-600 to-blue-800 text-white px-4 sm:px-6 py-4 rounded-b-3xl shadow-lg flex-shrink-0">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center">
                         {/* Avatar */}
@@ -128,7 +131,7 @@ export function HomePage() {
                 </div>
             </header>
 
-            <div className="px-4 py-6 space-y-8">
+            <main className="px-4 py-4 space-y-4 flex-grow flex flex-col justify-around">
                 {/* Section Carrousel */}
                 <section>
                     <h2 className="text-lg font-semibold mb-3 text-gray-800">Infos</h2>
@@ -142,7 +145,7 @@ export function HomePage() {
 
                 {/* Quiz Actions Grid */}
                 <section>
-                    <h2 className="text-lg font-bold text-gray-800 mb-3">Quiz Rapide</h2>
+                    <h2 className="text-lg font-bold text-gray-800 mb-3">Action Rapide</h2>
                     <div className="grid grid-cols-2 gap-4">
                         <QuizActionCard
                             title="Mes Quiz"
@@ -175,7 +178,7 @@ export function HomePage() {
                     </div>
                 </section>
 
-            </div>
+            </main>
         </div>
     );
 }

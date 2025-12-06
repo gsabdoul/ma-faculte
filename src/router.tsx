@@ -65,7 +65,6 @@ export const router = createHashRouter([
                 element: <RequireAuth />,
                 children: [
                     { path: "home", element: <HomePage /> },
-                    { path: "chat", element: <ChatPage /> },
                     { path: "stats", element: <StatsPage /> },
                     { path: "drives", element: <DrivesPage /> },
                     { path: "livres", element: <BooksPage /> },
@@ -91,6 +90,7 @@ export const router = createHashRouter([
             { path: "/profil/modifier", element: <EditProfilePage /> },
             { path: "/profil/abonnement", element: <SubscriptionPage /> },
             { path: "/profil/equipe", element: <TeamPage /> },
+            { path: "/chat", element: <ChatPage /> },
         ]
     },
 
