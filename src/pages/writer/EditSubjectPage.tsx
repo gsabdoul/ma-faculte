@@ -4,7 +4,6 @@ import { ChevronLeftIcon } from '@heroicons/react/24/outline';
 import { supabase } from '../../supabase';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
-import { getSubjectTitle } from '../../utils/subjectUtils';
 
 interface Module {
     id: string;

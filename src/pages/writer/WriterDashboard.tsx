@@ -83,7 +83,12 @@ export function WriterDashboard() {
                 const combinedCreations: Creation[] = [
                     ...(subjects.data || []).map(item => ({
                         id: item.id,
-                        titre: getSubjectTitle(item),
+                        titre: getSubjectTitle({
+                            modules: item.modules[0], // Assuming the first module is relevant
+                            universites: item.universites[0], // Assuming the first university is relevant
+                            annee: item.annee,
+                            session: item.session,
+                        }),
                         created_at: item.created_at,
                         type: 'Sujet' as const
                     })),

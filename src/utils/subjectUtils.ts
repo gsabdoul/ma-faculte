@@ -1,10 +1,4 @@
-import { Subject } from '../types/subject';
 
-/**
- * Generates a composite title for a subject based on its properties
- * Format: "Module - Université - Année - Session"
- * Example: "Mathématiques - Université de Paris - 2023 - Normale"
- */
 export function getSubjectTitle(subject: {
     modules?: { nom: string };
     universites?: { nom: string };
