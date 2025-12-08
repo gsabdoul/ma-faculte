@@ -136,9 +136,9 @@ export function ProfilePage() {
         <h1 className="text-2xl font-bold text-gray-800 text-center">Mon Profil</h1>
       </header>
 
-      <main className="p-4 space-y-6">
+      <main className="p-2 sm:p-4 space-y-6">
         {/* Section Informations Personnelles */}
-        <div className="bg-white p-6 rounded-xl shadow-md">
+        <div className="bg-white p-4 sm:p-6 rounded-xl shadow-md">
           <div className="flex flex-col items-center sm:flex-row sm:items-start space-y-4 sm:space-y-0 sm:space-x-6">
             <div className="relative">
               <UserCircleIcon className="w-24 h-24 text-gray-300" />

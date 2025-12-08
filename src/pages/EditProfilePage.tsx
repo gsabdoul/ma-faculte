@@ -151,7 +151,7 @@ export function EditProfilePage() {
                 <h1 className="text-xl font-bold text-gray-800">Modifier le profil</h1>
             </header>
 
-            <main className="p-4">
+            <main className="p-2 sm:p-4">
                 {location.state?.message && (
                     <div className="bg-blue-50 border-l-4 border-blue-400 text-blue-700 p-4 mb-6 rounded-r-lg flex items-start">
                         <InformationCircleIcon className="w-6 h-6 mr-3 flex-shrink-0" />

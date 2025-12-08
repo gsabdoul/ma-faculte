@@ -60,7 +60,7 @@ function SortableQuestionItem({ question, openModalForEdit, handleDeleteQuestion
     };
 
     return (
-        <div ref={setNodeRef} style={style} key={question.id} className="p-6 hover:bg-gray-50 transition-colors group">
+        <div ref={setNodeRef} style={style} key={question.id} className="p-4 sm:p-6 hover:bg-gray-50 transition-colors group">
             <div className="flex justify-between items-start gap-4">
                 <div className="flex items-center text-gray-400 cursor-grab" {...attributes} {...listeners}>
                     <Bars3Icon className="w-5 h-5" />
@@ -389,7 +389,7 @@ export function SubjectDetailsPage() {
 
 
     return (
-        <div className="min-h-screen bg-gray-50 p-8">
+        <div className="min-h-screen bg-gray-50 p-2 sm:p-4 md:p-8">
             {/* Header */}
             <div className="max-w-7xl mx-auto mb-8">
                 <button
@@ -463,7 +463,7 @@ export function SubjectDetailsPage() {
                             </SortableContext>
                         </DndContext>
                     ) : (
-                        <div className="p-12 text-center">
+                        <div className="p-6 sm:p-12 text-center">
                             <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                                 <DocumentTextIcon className="w-8 h-8 text-gray-400" />
                             </div>

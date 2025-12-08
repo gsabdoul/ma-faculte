@@ -29,7 +29,7 @@ export function DrivesTab() {
     const [drives, setDrives] = useState<Drive[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const { profile, user } = useUser() as any; // TODO: Add 'profile' to UserContextType
+    const { user } = useUser();
     const [driveToReport, setDriveToReport] = useState<Drive | null>(null);
     const [isReportModalOpen, setReportModalOpen] = useState(false);
     const [reportDescription, setReportDescription] = useState('');
@@ -37,7 +37,7 @@ export function DrivesTab() {
 
     useEffect(() => {
         const fetchDrives = async () => {
-            if (!profile) return;
+            if (!user?.faculte_id || !user?.niveau_id) return;
 
             setLoading(true);
             setError(null);
@@ -46,8 +46,8 @@ export function DrivesTab() {
                 const { data, error: fetchError } = await supabase
                     .from('drives')
                     .select('id, titre, description, url, faculte_id, niveau_id')
-                    .eq('faculte_id', profile.faculte_id)
-                    .eq('niveau_id', profile.niveau_id);
+                    .eq('faculte_id', user.faculte_id)
+                    .eq('niveau_id', user.niveau_id);
 
                 if (fetchError) throw fetchError;
 
@@ -60,7 +60,7 @@ export function DrivesTab() {
         };
 
         fetchDrives();
-    }, [profile]);
+    }, [user]);
 
     const filteredDrives = useMemo(() => {
         if (!searchTerm) return drives;
@@ -92,7 +92,7 @@ export function DrivesTab() {
                 .from('signalements')
                 .insert({
                     user_id: user.id,
-                    item_id: driveToReport.id,
+                    item_id: driveToReport.id, // Ceci est déjà un UUID
                     type: 'drive',
                     description: reportDescription.trim(),
                 });
@@ -109,7 +109,7 @@ export function DrivesTab() {
 
     return (
         <div>
-            <header className="bg-white p-4 shadow-sm sticky top-0 z-10 drives-header">
+            <header className="bg-white px-2 sm:px-4 py-4 shadow-sm sticky top-0 z-10 drives-header">
                 <h1 className="text-2xl font-bold text-gray-800">Drives Partagés</h1>
                 <div className="relative mt-4">
                     <MagnifyingGlassIcon className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -123,7 +123,7 @@ export function DrivesTab() {
                 </div>
             </header>
 
-            <main className="p-4 space-y-4">
+            <main className="p-2 sm:p-4 space-y-4">
                 {loading ? (
                     <div className="space-y-4">
                         {[...Array(5)].map((_, i) => (

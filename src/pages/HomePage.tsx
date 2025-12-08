@@ -146,7 +146,7 @@ export function HomePage() {
                 </div>
             </header>
 
-            <main className="px-4 py-4 space-y-4 flex-grow flex flex-col justify-around">
+            <main className="px-2 sm:px-4 py-4 space-y-6 flex-grow flex flex-col justify-around">
                 {/* Section Carrousel */}
                 <section>
                     <h2 className="text-lg font-semibold mb-3 text-gray-800">Infos</h2>
