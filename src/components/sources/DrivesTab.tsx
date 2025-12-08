@@ -29,7 +29,7 @@ export function DrivesTab() {
     const [drives, setDrives] = useState<Drive[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const { profile, user } = useUser();
+    const { profile, user } = useUser() as any; // TODO: Add 'profile' to UserContextType
     const [driveToReport, setDriveToReport] = useState<Drive | null>(null);
     const [isReportModalOpen, setReportModalOpen] = useState(false);
     const [reportDescription, setReportDescription] = useState('');

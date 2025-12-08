@@ -47,7 +47,7 @@ const ProfileListItem: React.FC<ProfileListItemProps> = ({ icon: Icon, text, onC
 
 
 export function ProfilePage() {
-  const { profile, user, loading } = useUser();
+  const { user, loading } = useUser();
   const navigate = useNavigate();
   const { modalProps, showModal } = useModal();
 
@@ -123,7 +123,7 @@ export function ProfilePage() {
   ];
 
   const visibleMenuItems = allMenuItems.filter(item => {
-    const userRole = profile?.role;
+    const userRole = user?.role;
     if (!userRole) return !item.roles && !item.hiddenRoles; // Affiche les éléments publics si pas de rôle
     if (item.roles) return item.roles.includes(userRole);
     if (item.hiddenRoles) return !item.hiddenRoles.includes(userRole);
@@ -147,9 +147,9 @@ export function ProfilePage() {
               </Link>
             </div>
             <div className="text-center sm:text-left flex-grow">
-              <h2 className="text-2xl font-bold text-gray-800">{profile?.prenom} {profile?.nom}</h2>
-              <p className="text-md text-gray-600">{profile?.faculte_nom}</p>
-              <p className="text-sm text-gray-500">{profile?.niveau_nom}</p>
+              <h2 className="text-2xl font-bold text-gray-800">{user?.prenom} {user?.nom}</h2>
+              <p className="text-md text-gray-600">{user?.faculte_nom}</p>
+              <p className="text-sm text-gray-500">{user?.niveau_nom}</p>
             </div>
           </div>
           <div className="border-t border-gray-200 mt-6 pt-4">

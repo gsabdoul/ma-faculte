@@ -177,7 +177,7 @@ export function WriterDashboard() {
     return (
         <div className="min-h-screen bg-gray-50">
             <header className="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center">
-                <button onClick={() => navigate(-1)} className="p-2 mr-2 rounded-full hover:bg-gray-100">
+                <button onClick={() => navigate('/profil')} className="p-2 mr-2 rounded-full hover:bg-gray-100">
                     <ChevronLeftIcon className="w-6 h-6 text-gray-700" />
                 </button>
                 <h1 className="text-xl font-bold text-gray-800">Mon tableau de bord</h1>

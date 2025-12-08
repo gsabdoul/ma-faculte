@@ -20,6 +20,7 @@ interface Option {
 
 export function RegisterPage() {
     const navigate = useNavigate();
+    const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({
         firstName: '',
         lastName: '',
@@ -87,17 +88,37 @@ export function RegisterPage() {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleNextStep = () => {
+        setError(null);
+        if (step === 1) {
+            if (!formData.firstName || !formData.lastName || !formData.email || !formData.password) {
+                setError("Veuillez remplir tous les champs.");
+                return;
+            }
+            if (formData.password !== formData.confirmPassword) {
+                setError("Les mots de passe ne correspondent pas.");
+                return;
+            }
+        }
+        if (step === 2) {
+            if (!formData.universityId || !formData.faculteId || !formData.niveauId) {
+                setError("Veuillez compléter votre parcours académique.");
+                return;
+            }
+        }
+        setStep(prev => prev + 1);
+    };
+
+    const handlePrevStep = () => {
+        setError(null);
+        setStep(prev => prev - 1);
+    };
+
+    const handleFinalSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Validation basique
-        if (formData.password !== formData.confirmPassword) {
-            setError("Les mots de passe ne correspondent pas");
-            return;
-        }
-
-        if (!formData.universityId || !formData.faculteId || !formData.niveauId) {
-            setError("Veuillez remplir tous les champs obligatoires");
+        if (step !== 2) {
+            handleNextStep();
             return;
         }
 
@@ -111,8 +132,8 @@ export function RegisterPage() {
                 password: formData.password,
                 options: {
                     data: {
-                        first_name: formData.firstName, // deviendra prenom
-                        last_name: formData.lastName,   // deviendra nom
+                        prenom: formData.firstName,
+                        nom: formData.lastName,
                         university_id: formData.universityId,
                         faculte_id: formData.faculteId,
                         niveau_id: formData.niveauId,
@@ -180,98 +201,88 @@ export function RegisterPage() {
                     </div>
                 )}
 
-                <form className="mt-8 space-y-6" onSubmit={handleSubmit} noValidate>
-                    <div className="space-y-4">
-                        <div className="relative">
-                            <UserIcon className="pointer-events-none w-5 h-5 text-gray-400 absolute top-1/2 transform -translate-y-1/2 left-3" />
-                            <input id="firstName" name="firstName" type="text" required onChange={handleInputChange} className="block w-full rounded-md border-gray-300 pl-10 pr-3 py-2.5 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm" placeholder="Prénom" />
+                <form className="mt-8" onSubmit={handleFinalSubmit} noValidate>
+                    {step === 1 && (
+                        <div className="space-y-4">
+                            <div className="relative">
+                                <UserIcon className="pointer-events-none w-5 h-5 text-gray-400 absolute top-1/2 transform -translate-y-1/2 left-3" />
+                                <input id="firstName" name="firstName" type="text" required onChange={handleInputChange} value={formData.firstName} className="block w-full rounded-md border-gray-300 pl-10 pr-3 py-2.5 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm" placeholder="Prénom" />
+                            </div>
+                            <div className="relative">
+                                <UserIcon className="pointer-events-none w-5 h-5 text-gray-400 absolute top-1/2 transform -translate-y-1/2 left-3" />
+                                <input id="lastName" name="lastName" type="text" required onChange={handleInputChange} value={formData.lastName} className="block w-full rounded-md border-gray-300 pl-10 pr-3 py-2.5 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm" placeholder="Nom" />
+                            </div>
+                            <div className="relative">
+                                <AtSymbolIcon className="pointer-events-none w-5 h-5 text-gray-400 absolute top-1/2 transform -translate-y-1/2 left-3" />
+                                <input id="email-address" name="email" type="email" autoComplete="email" required onChange={handleInputChange} value={formData.email} className="block w-full rounded-md border-gray-300 pl-10 pr-3 py-2.5 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm" placeholder="Adresse email" />
+                            </div>
+                            <div className="relative">
+                                <LockClosedIcon className="pointer-events-none w-5 h-5 text-gray-400 absolute top-1/2 transform -translate-y-1/2 left-3" />
+                                <input id="password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" required onChange={handleInputChange} value={formData.password} className="block w-full rounded-md border-gray-300 pl-10 pr-10 py-2.5 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm" placeholder="Mot de passe" />
+                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700">
+                                    {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                                </button>
+                            </div>
+                            <div className="relative">
+                                <LockClosedIcon className="pointer-events-none w-5 h-5 text-gray-400 absolute top-1/2 transform -translate-y-1/2 left-3" />
+                                <input id="confirmPassword" name="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} autoComplete="new-password" required onChange={handleInputChange} value={formData.confirmPassword} className="block w-full rounded-md border-gray-300 pl-10 pr-10 py-2.5 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm" placeholder="Confirmer le mot de passe" />
+                                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700">
+                                    {showConfirmPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                                </button>
+                            </div>
+                            <button type="submit" className="w-full mt-6 py-3 px-4 rounded-md font-semibold text-white bg-blue-600 hover:bg-blue-700">Suivant</button>
                         </div>
-                        <div className="relative">
-                            <UserIcon className="pointer-events-none w-5 h-5 text-gray-400 absolute top-1/2 transform -translate-y-1/2 left-3" />
-                            <input id="lastName" name="lastName" type="text" required onChange={handleInputChange} className="block w-full rounded-md border-gray-300 pl-10 pr-3 py-2.5 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm" placeholder="Nom" />
-                        </div>
-                        <div className="relative">
-                            <AtSymbolIcon className="pointer-events-none w-5 h-5 text-gray-400 absolute top-1/2 transform -translate-y-1/2 left-3" />
-                            <input id="email-address" name="email" type="email" autoComplete="email" required onChange={handleInputChange} className="block w-full rounded-md border-gray-300 pl-10 pr-3 py-2.5 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm" placeholder="Adresse email" />
-                        </div>
-                        <div className="relative">
-                            <LockClosedIcon className="pointer-events-none w-5 h-5 text-gray-400 absolute top-1/2 transform -translate-y-1/2 left-3" />
-                            <input id="password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" required onChange={handleInputChange} className="block w-full rounded-md border-gray-300 pl-10 pr-10 py-2.5 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm" placeholder="Mot de passe" />
-                            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700">
-                                {showPassword ? (
-                                    <EyeSlashIcon className="h-5 w-5" />
-                                ) : (
-                                    <EyeIcon className="h-5 w-5" />
-                                )}
-                            </button>
-                        </div>
-                        <div className="relative">
-                            <LockClosedIcon className="pointer-events-none w-5 h-5 text-gray-400 absolute top-1/2 transform -translate-y-1/2 left-3" />
-                            <input id="confirm-password" name="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} autoComplete="new-password" required onChange={handleInputChange} className="block w-full rounded-md border-gray-300 pl-10 pr-10 py-2.5 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm" placeholder="Confirmer le mot de passe" />
-                            <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700">
-                                {showConfirmPassword ? (
-                                    <EyeSlashIcon className="h-5 w-5" />
-                                ) : (
-                                    <EyeIcon className="h-5 w-5" />
-                                )}
-                            </button>
-                        </div>
+                    )}
 
-                        {/* Champs de sélection */}
-                        <div className="border-t border-gray-200 pt-6 space-y-4">
-                            <div>
-                                <label htmlFor="university" className="block text-sm font-medium text-gray-700 mb-1">Université</label>
-                                <SearchableSelect
-                                    options={universities}
-                                    value={formData.universityNom}
-                                    onChange={(option: any) => {
-                                        setFormData(prev => ({
-                                            ...prev,
-                                            universityId: option?.id || '',
-                                            universityNom: option?.name || '',
-                                            faculteId: '',
-                                            faculteNom: '',
-                                            niveauId: '',
-                                            niveauNom: '',
-                                        }));
-                                        setLevels([]);
-                                    }}
-                                    placeholder="Rechercher une université..."
-                                />
+                    {step === 2 && (
+                        <div className="space-y-4">
+                            <div className="border-t border-gray-200 pt-6 space-y-4">
+                                <div>
+                                    <label htmlFor="university" className="block text-sm font-medium text-gray-700 mb-1">Université</label>
+                                    <SearchableSelect
+                                        options={universities}
+                                        value={formData.universityNom}
+                                        onChange={(option: any) => {
+                                            setFormData(prev => ({ ...prev, universityId: option?.id || '', universityNom: option?.name || '', faculteId: '', faculteNom: '', niveauId: '', niveauNom: '' }));
+                                            setLevels([]);
+                                        }}
+                                        placeholder="Rechercher une université..."
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="faculte" className="block text-sm font-medium text-gray-700 mb-1">Faculté</label>
+                                    <SearchableSelect
+                                        options={facultes}
+                                        value={formData.faculteNom}
+                                        onChange={(option: any) => setFormData(prev => ({ ...prev, faculteId: option?.id || '', faculteNom: option?.name || '' }))}
+                                        placeholder={formData.universityId ? "Rechercher une faculté..." : "Sélectionnez d'abord une université"}
+                                        disabled={!formData.universityId}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="level" className="block text-sm font-medium text-gray-700 mb-1">Niveau d'étude</label>
+                                    <select id="level" name="level" value={formData.niveauId} onChange={(e) => {
+                                        const id = e.target.value;
+                                        const selected = levels.find(l => l.id === id);
+                                        setFormData(prev => ({ ...prev, niveauId: id, niveauNom: selected?.name || '' }));
+                                    }} required className="block w-full rounded-md border-gray-300 py-2.5 text-gray-900 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm">
+                                        <option value="">Sélectionner un niveau</option>
+                                        {levels.map(level => <option key={level.id} value={level.id}>{level.name}</option>)}
+                                    </select>
+                                </div>
                             </div>
-                            <div>
-                                <label htmlFor="faculte" className="block text-sm font-medium text-gray-700 mb-1">Faculté</label>
-                                <SearchableSelect
-                                    options={facultes}
-                                    value={formData.faculteNom}
-                                    onChange={(option: any) => setFormData(prev => ({ ...prev, faculteId: option?.id || '', faculteNom: option?.name || '' }))}
-                                    placeholder={formData.universityId ? "Rechercher une faculté..." : "Sélectionnez d'abord une université"}
-                                    disabled={!formData.universityId}
-                                />
-                            </div>
-                            <div>
-                                <label htmlFor="level" className="block text-sm font-medium text-gray-700 mb-1">Niveau d'étude</label>
-                                <select id="level" name="level" value={formData.niveauId} onChange={(e) => {
-                                    const id = e.target.value;
-                                    const selected = levels.find(l => l.id === id);
-                                    setFormData(prev => ({ ...prev, niveauId: id, niveauNom: selected?.name || '' }));
-                                }} required className="block w-full rounded-md border-gray-300 py-2.5 text-gray-900 focus:ring-2 focus:ring-inset focus:ring-blue-500 sm:text-sm">
-                                    <option value="">Sélectionner un niveau</option>
-                                    {levels.map(level => <option key={level.id} value={level.id}>{level.name}</option>)}
-                                </select>
+                            <div className="flex gap-4 mt-6">
+                                <button type="button" onClick={handlePrevStep} className="w-full py-3 px-4 rounded-md font-semibold text-gray-700 bg-gray-200 hover:bg-gray-300">Précédent</button>
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="w-full py-3 px-4 rounded-md font-semibold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                    {loading ? "Création du compte..." : "Terminer l'inscription"}
+                                </button>
                             </div>
                         </div>
-                    </div>
-
-                    <div>
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="w-full py-3 px-4 rounded-md font-semibold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
-                        >
-                            {loading ? "Inscription en cours..." : "S'inscrire"}
-                        </button>
-                    </div>
+                    )}
                 </form>
             </div>
         </div>

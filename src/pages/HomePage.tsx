@@ -27,7 +27,7 @@ const CarouselSkeleton = () => (
 export function HomePage() {
     const navigate = useNavigate();
     const { unreadCount } = useNotifications();
-    const { profile } = useUser();
+    const { user } = useUser();
     const [carouselItems, setCarouselItems] = useState<any[]>([]);
     const [loadingCarousel, setLoadingCarousel] = useState(true);
     const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -91,6 +91,21 @@ export function HomePage() {
         fetchCarousel();
     }, []);
 
+    // Vérifier si le profil de l'utilisateur est complet
+    useEffect(() => {
+        // On attend que les données de l'utilisateur soient chargées
+        if (user && !loadingCarousel) {
+            const isProfileIncomplete = !user.universite_id || !user.faculte_id || !user.niveau_id;
+
+            if (isProfileIncomplete) {
+                navigate('/profil/modifier', {
+                    replace: true,
+                    state: { message: "Bienvenue ! Veuillez compléter votre profil pour continuer." }
+                });
+            }
+        }
+    }, [user, loadingCarousel, navigate]);
+
 
 
 
@@ -121,7 +136,7 @@ export function HomePage() {
                         </Link>
                         <div className="ml-4">
                             <p className="text-blue-200 text-sm">Bienvenue,</p>
-                            <h1 className="text-xl font-bold tracking-tight">{profile?.prenom || 'Étudiant'}</h1>
+                            <h1 className="text-xl font-bold tracking-tight">{user?.prenom || 'Étudiant'}</h1>
                         </div>
                     </div>
                     <Link to="/notifications" className="relative p-2 hover:bg-white/10 rounded-full transition-colors flex-shrink-0">

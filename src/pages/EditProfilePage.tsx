@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ChevronLeftIcon } from '@heroicons/react/24/solid';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { ChevronLeftIcon, InformationCircleIcon } from '@heroicons/react/24/solid';
 import { useUser } from '../context/UserContext';
 import { supabase } from '../supabase';
 
@@ -23,7 +23,8 @@ interface Option {
 
 export function EditProfilePage() {
     const navigate = useNavigate();
-    const { profile, refreshProfile } = useUser();
+    const { user, refreshProfile } = useUser();
+    const location = useLocation();
 
     const [initialData, setInitialData] = useState({
         prenom: '',
@@ -57,18 +58,18 @@ export function EditProfilePage() {
 
     // Pré-remplir le formulaire avec les données du profil actuel
     useEffect(() => {
-        if (profile) {
+        if (user) {
             const data = {
-                prenom: profile.prenom || '',
-                nom: profile.nom || '',
-                universite_id: profile.universite_id || '',
-                faculte_id: profile.faculte_id || '',
-                niveau_id: profile.niveau_id || '',
+                prenom: user.prenom || '',
+                nom: user.nom || '',
+                universite_id: user.universite_id || '',
+                faculte_id: user.faculte_id || '',
+                niveau_id: user.niveau_id || '',
             };
             setFormData(data);
             setInitialData(data);
         }
-    }, [profile]);
+    }, [user]);
 
     // Charger les universités et facultés
     useEffect(() => {
@@ -105,7 +106,7 @@ export function EditProfilePage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!profile) return;
+        if (!user) return;
 
         setLoading(true);
         setError(null);
@@ -119,7 +120,7 @@ export function EditProfilePage() {
                 faculte_id: formData.faculte_id,
                 niveau_id: formData.niveau_id,
             })
-            .eq('id', profile.id);
+            .eq('id', user.id);
 
         setLoading(false);
 
@@ -151,6 +152,13 @@ export function EditProfilePage() {
             </header>
 
             <main className="p-4">
+                {location.state?.message && (
+                    <div className="bg-blue-50 border-l-4 border-blue-400 text-blue-700 p-4 mb-6 rounded-r-lg flex items-start">
+                        <InformationCircleIcon className="w-6 h-6 mr-3 flex-shrink-0" />
+                        <p>{location.state.message}</p>
+                    </div>
+                )}
+
                 {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
                 <form onSubmit={handleSubmit} className="space-y-6 bg-white p-6 rounded-xl shadow-md">
                     <FormField label="Prénom">

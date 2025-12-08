@@ -35,7 +35,7 @@ interface QuizSelectionProps {
 }
 
 export function QuizSelection({ onStartQuiz }: QuizSelectionProps) {
-    const { profile } = useUser();
+    const { profile } = useUser() as any; // TODO: Add 'profile' to UserContextType
     const [, setLoading] = useState(true);
 
     // Sessions Data

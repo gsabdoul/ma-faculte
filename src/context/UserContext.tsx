@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import { supabase } from '../supabase';
 import type { Session, User } from '@supabase/supabase-js';
 
-// Type pour le profil utilisateur
+// Type pour le profil utilisateur étendu
 export interface UserProfile {
   id: string;
   nom: string;
@@ -24,10 +24,12 @@ export interface UserProfile {
   niveau_nom?: string;
 }
 
+// L'objet utilisateur complet que nous exposerons
+export type AppUser = User & UserProfile;
+
 interface UserContextType {
   session: Session | null;
-  user: User | null;
-  profile: UserProfile | null;
+  user: AppUser | null; // Remplacer user et profile par un seul objet
   loading: boolean;
   refreshProfile: () => Promise<void>;
 }
@@ -35,18 +37,15 @@ interface UserContextType {
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [session, setSession] = useState<Session | null>(null); const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Récupérer la session au chargement
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      setUser(session?.user ?? null);
       if (session?.user) {
-        fetchProfile(session.user.id);
+        fetchProfile(session.user);
       } else {
         setLoading(false);
       }
@@ -56,12 +55,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setSession(session);
-        setUser(session?.user ?? null);
 
         if (session?.user) {
-          fetchProfile(session.user.id);
+          fetchProfile(session.user);
         } else {
-          setProfile(null);
+          setUser(null); // Si pas de session, l'utilisateur est null
           setLoading(false);
         }
       }
@@ -73,7 +71,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Fonction pour récupérer le profil avec les données jointes
-  async function fetchProfile(userId: string) {
+  async function fetchProfile(sessionUser: User) {
     try {
       setLoading(true);
 
@@ -86,7 +84,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
           facultes:faculte_id (nom),
           niveaux:niveau_id (nom)
         `)
-        .eq('id', userId)
+        .eq('id', sessionUser.id)
         .single();
 
       if (error) {
@@ -102,10 +100,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
           niveau_nom: data.niveaux?.nom
         };
 
-        setProfile(profileData);
+        // On fusionne l'utilisateur de la session avec son profil
+        setUser({ ...sessionUser, ...profileData });
       }
     } catch (error) {
       console.error('Erreur lors de la récupération du profil:', error);
+      setUser(sessionUser as AppUser); // Fallback
     } finally {
       setLoading(false);
     }
@@ -113,15 +113,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   // Fonction pour rafraîchir le profil
   const refreshProfile = async () => {
-    if (user) {
-      await fetchProfile(user.id);
+    const sessionUser = session?.user;
+    if (sessionUser) {
+      await fetchProfile(sessionUser);
     }
   };
 
   const value = {
     session,
-    user,
-    profile,
+    user, // On expose uniquement l'utilisateur fusionné
     loading,
     refreshProfile
   };

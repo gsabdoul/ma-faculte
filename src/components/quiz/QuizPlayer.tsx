@@ -3,6 +3,8 @@ import { supabase } from '../../supabase';
 import { ChevronLeftIcon, ChevronRightIcon, CheckCircleIcon, BookmarkIcon, PencilSquareIcon } from '@heroicons/react/24/solid';
 import { AddToPlaylistModal } from '../playlist/AddToPlaylistModal';
 import { Modal } from '../ui/Modal';
+import { useOnlineStatus } from '../../hooks/useOnlineStatus';
+import { useDebounce } from '../../hooks/useDebounce';
 
 interface Question {
     id: number;
@@ -22,8 +24,17 @@ interface Option {
     is_correct: boolean;
 }
 
+interface QuizState {
+    currentIndex: number;
+    answers: Record<number, any>;
+    elapsedTime: number;
+    submittedQROC: Record<number, boolean>;
+    qrocSelfEval: Record<number, boolean>;
+}
+
 interface QuizPlayerProps {
     questions: Question[];
+    quizId: string; // Unique identifier for the quiz to use with localStorage
     onBack: () => void;
     mode?: 'practice' | 'playlist' | 'challenge';
     initialState?: {
@@ -37,35 +48,170 @@ interface QuizPlayerProps {
     onComplete?: (score: number, total: number) => void;
 }
 
-export default function QuizPlayer({ questions, onBack, mode = 'practice', onComplete, initialState, onStateChange }: QuizPlayerProps) {
-    const [currentIndex, setCurrentIndex] = useState(initialState?.currentIndex || 0);
-    const [answers, setAnswers] = useState<Record<number, any>>(initialState?.answers || {});
-    const [submittedQROC, setSubmittedQROC] = useState<Record<number, boolean>>(initialState?.submittedQROC || {});
-    const [qrocSelfEval, setQrocSelfEval] = useState<Record<number, boolean>>(initialState?.qrocSelfEval || {});
+export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice', onComplete, initialState: explicitInitialState, onStateChange }: QuizPlayerProps) {
+    const getLocalStorageKey = () => `quiz-progress-${quizId}`;
+    const isOnline = useOnlineStatus();
+
+    const [isLoadingState, setIsLoadingState] = useState(true);
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const [answers, setAnswers] = useState<Record<number, any>>({});
     const [showResults, setShowResults] = useState(false);
-    const [showCorrection, setShowCorrection] = useState(false);
-    const [elapsedTime, setElapsedTime] = useState(initialState?.elapsedTime || 0);
+    const [elapsedTime, setElapsedTime] = useState(0);
     const [timerActive, setTimerActive] = useState(true);
     const [showPlaylistModal, setShowPlaylistModal] = useState(false);
     const [selectedQuestionForPlaylist, setSelectedQuestionForPlaylist] = useState<number | null>(null);
     const [savedQuestionIds, setSavedQuestionIds] = useState<Set<number>>(new Set());
+    const [submittedQROC, setSubmittedQROC] = useState<Record<number, boolean>>({});
+    const [qrocSelfEval, setQrocSelfEval] = useState<Record<number, boolean>>({});
+    const [showCorrection, setShowCorrection] = useState(false);
 
-    // Notes Logic
     const [userNotes, setUserNotes] = useState<Record<number, string>>({}); // valid question_id -> note content
     const [noteModalOpen, setNoteModalOpen] = useState(false);
     const [currentNoteQuestionId, setCurrentNoteQuestionId] = useState<number | null>(null);
     const [currentNoteContent, setCurrentNoteContent] = useState("");
 
-    // Notify state changes
+    const currentState: QuizState = {
+        currentIndex,
+        answers,
+        elapsedTime,
+        submittedQROC,
+        qrocSelfEval,
+    };
+
+    const debouncedState = useDebounce(currentState, 1000); // Debounce state for 1 second
+
+    const setStateFromLoadedData = (state: Partial<QuizState> | null) => {
+        setCurrentIndex(state?.currentIndex || 0);
+        setAnswers(state?.answers || {});
+        setElapsedTime(state?.elapsedTime || 0);
+        setSubmittedQROC(state?.submittedQROC || {});
+        setQrocSelfEval(state?.qrocSelfEval || {});
+    };
+
+    // Load initial state from server or localStorage
+    useEffect(() => {
+        const loadInitialState = async () => {
+            setIsLoadingState(true);
+            if (explicitInitialState) {
+                setStateFromLoadedData(explicitInitialState);
+                setIsLoadingState(false);
+                return;
+            }
+
+            const { data: { user } } = await supabase.auth.getUser();
+            let remoteState: { state: QuizState, updated_at: string } | null = null;
+
+            if (user && isOnline) {
+                try {
+                    const { data } = await supabase
+                        .from('quiz_progress')
+                        .select('state, updated_at')
+                        .eq('user_id', user.id)
+                        .eq('quiz_id', quizId)
+                        .single();
+                    if (data && typeof data.state === 'string') {
+                        remoteState = { ...data, state: JSON.parse(data.state) };
+                    } else {
+                        remoteState = data as any;
+                    }
+                } catch (err) { console.error("Error fetching remote progress:", err); }
+            }
+
+            let localState: (QuizState & { updated_at: string }) | null = null;
+            try {
+                const saved = localStorage.getItem(getLocalStorageKey());
+                if (saved) localState = JSON.parse(saved);
+            } catch (err) { console.error("Error fetching local progress:", err); }
+
+            // Logic to decide which state to use
+            if (remoteState && localState) {
+                // Use the most recent state
+                if (new Date(remoteState.updated_at) > new Date(localState.updated_at)) {
+                    setStateFromLoadedData(remoteState.state);
+                } else {
+                    setStateFromLoadedData(localState);
+                }
+            } else if (remoteState) {
+                setStateFromLoadedData(remoteState.state);
+            } else if (localState) {
+                setStateFromLoadedData(localState);
+            }
+
+            setIsLoadingState(false);
+        };
+
+        loadInitialState();
+    }, [quizId, isOnline, explicitInitialState]);
+
+    // Effect for saving state (debounced)
+    useEffect(() => {
+        if (isLoadingState || showResults) return;
+
+        const saveState = async () => {
+            const stateWithTimestamp = { ...debouncedState, updated_at: new Date().toISOString() };
+
+            if (isOnline) {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    await supabase.from('quiz_progress').upsert({
+                        user_id: user.id,
+                        quiz_id: quizId,
+                        state: debouncedState as any,
+                        updated_at: stateWithTimestamp.updated_at,
+                    }, { onConflict: 'user_id, quiz_id' }); // Assumes you have a unique constraint
+                }
+            }
+            // Always save to localStorage for offline access and resilience
+            localStorage.setItem(getLocalStorageKey(), JSON.stringify(stateWithTimestamp));
+        };
+
+        saveState();
+
+        if (onStateChange) {
+            onStateChange({ ...debouncedState, isCompleted: showResults });
+        }
+    }, [debouncedState, isOnline, quizId, isLoadingState, showResults, onStateChange]);
+
+    // Effect to sync local changes when coming back online
+    useEffect(() => {
+        if (isOnline) {
+            const syncOfflineProgress = async () => {
+                const localData = localStorage.getItem(getLocalStorageKey());
+                if (!localData) return;
+
+                const localState = JSON.parse(localData);
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                // Simple sync: just push local state to remote.
+                // A more robust solution would compare timestamps.
+                try {
+                    await supabase.from('quiz_progress').upsert({
+                        user_id: user.id,
+                        quiz_id: quizId,
+                        state: { // This should be an object, Supabase client handles stringification
+                            currentIndex: localState.currentIndex,
+                            answers: localState.answers,
+                            elapsedTime: localState.elapsedTime,
+                            submittedQROC: localState.submittedQROC,
+                            qrocSelfEval: localState.qrocSelfEval,
+                        } as any,
+                        updated_at: localState.updated_at,
+                    }, { onConflict: 'user_id, quiz_id' });
+                } catch (error) {
+                    console.error("Failed to sync offline progress:", error);
+                }
+            };
+            syncOfflineProgress();
+        }
+    }, [isOnline, quizId]);
+
+    // Notify state changes (for parent components that need immediate feedback)
     useEffect(() => {
         if (onStateChange) {
             onStateChange({
-                currentIndex,
-                answers,
-                elapsedTime,
-                submittedQROC,
-                qrocSelfEval,
-                isCompleted: showResults // Use this to mark completion
+                ...currentState,
+                isCompleted: showResults
             });
         }
     }, [currentIndex, answers, elapsedTime, submittedQROC, qrocSelfEval, showResults, onStateChange]);
@@ -154,26 +300,12 @@ export default function QuizPlayer({ questions, onBack, mode = 'practice', onCom
                 }
             } else {
                 // Upsert
-                // We need to check if it exists or use upsert if constraint exists.
-                // Since we don't have a unique constraint on (user_id, question_id) in the migration I wrote (oops, I should verify constraints),
-                // I will do a check or delete-insert. Actually, I didn't add a unique constraint.
-                // Let's check first.
-
-                const { data: existing } = await supabase.from('user_notes')
-                    .select('id')
-                    .eq('user_id', user.id)
-                    .eq('question_id', currentNoteQuestionId)
-                    .single();
-
-                if (existing) {
-                    await supabase.from('user_notes').update({ content: currentNoteContent, updated_at: new Date().toISOString() }).eq('id', existing.id);
-                } else {
-                    await supabase.from('user_notes').insert({
-                        user_id: user.id,
-                        question_id: currentNoteQuestionId,
-                        content: currentNoteContent
-                    });
-                }
+                await supabase.from('user_notes').upsert({
+                    user_id: user.id,
+                    question_id: currentNoteQuestionId,
+                    content: currentNoteContent,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'user_id, question_id' }); // Assumes unique constraint
 
                 setUserNotes(prev => ({ ...prev, [currentNoteQuestionId]: currentNoteContent }));
             }
@@ -207,8 +339,23 @@ export default function QuizPlayer({ questions, onBack, mode = 'practice', onCom
 
     const currentQuestion = questions[currentIndex];
 
+    const isMultipleChoice = (question: Question) => {
+        return question.type === 'qcm' && (question.options?.filter(o => o.is_correct).length ?? 0) > 1;
+    };
+
     const handleAnswerChange = (questionId: number, answer: any) => {
-        setAnswers(prev => ({ ...prev, [questionId]: answer }));
+        const question = questions.find(q => q.id === questionId);
+        if (question && isMultipleChoice(question)) {
+            setAnswers(prev => {
+                const existingAnswers = Array.isArray(prev[questionId]) ? prev[questionId] : [];
+                const newAnswers = existingAnswers.includes(answer)
+                    ? existingAnswers.filter(a => a !== answer)
+                    : [...existingAnswers, answer];
+                return { ...prev, [questionId]: newAnswers };
+            });
+        } else {
+            setAnswers(prev => ({ ...prev, [questionId]: answer }));
+        }
     };
 
     const handleNext = () => {
@@ -228,6 +375,16 @@ export default function QuizPlayer({ questions, onBack, mode = 'practice', onCom
         setTimerActive(false);
     };
 
+    const handleExit = async () => {
+        // Clear saved progress on explicit exit
+        localStorage.removeItem(getLocalStorageKey());
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            await supabase.from('quiz_progress').delete().match({ user_id: user.id, quiz_id: quizId });
+        }
+        onBack();
+    };
+
     const calculateScore = () => {
         let correctCount = 0;
         let totalPoints = 0;
@@ -236,10 +393,19 @@ export default function QuizPlayer({ questions, onBack, mode = 'practice', onCom
             totalPoints += q.points || 1;
             const userAnswer = answers[q.id];
 
-            if (q.type === 'qcm' && userAnswer !== undefined) {
-                const correctOption = q.options?.find(o => o.is_correct);
-                if (correctOption && userAnswer === correctOption.id) {
-                    correctCount += (q.points || 1);
+            if (q.type === 'qcm' && userAnswer !== undefined && q.options) {
+                const correctOptions = q.options.filter(o => o.is_correct).map(o => o.id);
+                if (isMultipleChoice(q)) {
+                    const userAnswerSet = new Set(userAnswer as number[]);
+                    const correctOptionsSet = new Set(correctOptions);
+                    if (userAnswerSet.size === correctOptionsSet.size && [...userAnswerSet].every(id => correctOptionsSet.has(id))) {
+                        correctCount += (q.points || 1);
+                    }
+                } else {
+                    const correctOption = q.options.find(o => o.is_correct);
+                    if (correctOption && userAnswer === correctOption.id) {
+                        correctCount += (q.points || 1);
+                    }
                 }
             } else if (q.type === 'qroc' && qrocSelfEval[q.id] === true) {
                 correctCount += (q.points || 1);
@@ -258,6 +424,14 @@ export default function QuizPlayer({ questions, onBack, mode = 'practice', onCom
         const secs = seconds % 60;
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
+
+    if (isLoadingState) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
 
     if (questions.length === 0) {
         return (
@@ -288,7 +462,7 @@ export default function QuizPlayer({ questions, onBack, mode = 'practice', onCom
             <div className="min-h-screen bg-gray-50 pb-20">
                 <header className="bg-white p-4 shadow-sm flex items-center gap-3">
                     <button
-                        onClick={onBack}
+                        onClick={handleExit}
                         className="p-2 rounded-full hover:bg-gray-100 text-gray-600 hover:text-blue-600 transition-colors"
                         title="Retour aux sujets"
                     >
@@ -324,19 +498,16 @@ export default function QuizPlayer({ questions, onBack, mode = 'practice', onCom
                                         onClick={() => {
                                             setShowResults(false);
                                             setShowCorrection(false);
-                                            setCurrentIndex(0);
-                                            setAnswers({});
-                                            setSubmittedQROC({});
-                                            setQrocSelfEval({});
-                                            setElapsedTime(0);
+                                            setStateFromLoadedData(null); // Reset state
                                             setTimerActive(true);
+                                            handleExit(); // Clear stored progress
                                         }}
                                         className="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors"
                                     >
                                         Recommencer
                                     </button>
                                     <button
-                                        onClick={onBack}
+                                        onClick={handleExit}
                                         className="w-full bg-gray-200 text-gray-700 font-bold py-3 px-6 rounded-lg hover:bg-gray-300 transition-colors"
                                     >
                                         Choisir un autre sujet
@@ -369,9 +540,15 @@ export default function QuizPlayer({ questions, onBack, mode = 'practice', onCom
                         const userAnswer = answers[question.id];
                         let isCorrect = false;
 
-                        if (question.type === 'qcm') {
-                            const correctOption = question.options?.find(o => o.is_correct);
-                            isCorrect = !!(correctOption && userAnswer === correctOption.id);
+                        if (question.type === 'qcm' && question.options) {
+                            if (isMultipleChoice(question)) {
+                                const correctIds = new Set(question.options.filter(o => o.is_correct).map(o => o.id));
+                                const answerIds = new Set(userAnswer as number[] || []);
+                                isCorrect = correctIds.size === answerIds.size && [...correctIds].every(id => answerIds.has(id));
+                            } else {
+                                const correctOption = question.options.find(o => o.is_correct);
+                                isCorrect = !!(correctOption && userAnswer === correctOption.id);
+                            }
                         }
 
                         return (
@@ -402,7 +579,10 @@ export default function QuizPlayer({ questions, onBack, mode = 'practice', onCom
                                 {question.type === 'qcm' && question.options && (
                                     <div className="space-y-2 mb-4">
                                         {question.options.map((option) => {
-                                            const isUserAnswer = userAnswer === option.id;
+                                            const isUserAnswer = isMultipleChoice(question)
+                                                ? Array.isArray(answers[question.id]) && answers[question.id].includes(option.id)
+                                                : userAnswer === option.id;
+
                                             const isCorrectOption = option.is_correct === true;
 
                                             return (
@@ -579,23 +759,43 @@ export default function QuizPlayer({ questions, onBack, mode = 'practice', onCom
                     {currentQuestion.type === 'qcm' && currentQuestion.options && (
                         <div className="space-y-3">
                             {currentQuestion.options.map((option) => (
-                                <label
-                                    key={option.id}
-                                    className={`block p-4 border-2 rounded-lg cursor-pointer transition-all ${answers[currentQuestion.id] === option.id
-                                        ? 'border-blue-600 bg-blue-50'
-                                        : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                                        }`}
-                                >
-                                    <input
-                                        type="radio"
-                                        name={`question-${currentQuestion.id}`}
-                                        value={option.id}
-                                        checked={answers[currentQuestion.id] === option.id}
-                                        onChange={() => handleAnswerChange(currentQuestion.id, option.id)}
-                                        className="mr-3"
-                                    />
-                                    <span className="text-gray-800">{option.content}</span>
-                                </label>
+                                isMultipleChoice(currentQuestion) ? (
+                                    <label
+                                        key={option.id}
+                                        className={`block p-4 border-2 rounded-lg cursor-pointer transition-all ${Array.isArray(answers[currentQuestion.id]) && answers[currentQuestion.id].includes(option.id)
+                                            ? 'border-blue-600 bg-blue-50'
+                                            : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                                            }`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            name={`question-${currentQuestion.id}`}
+                                            value={option.id}
+                                            checked={Array.isArray(answers[currentQuestion.id]) && answers[currentQuestion.id].includes(option.id)}
+                                            onChange={() => handleAnswerChange(currentQuestion.id, option.id)}
+                                            className="mr-3 rounded"
+                                        />
+                                        <span className="text-gray-800">{option.content}</span>
+                                    </label>
+                                ) : (
+                                    <label
+                                        key={option.id}
+                                        className={`block p-4 border-2 rounded-lg cursor-pointer transition-all ${answers[currentQuestion.id] === option.id
+                                            ? 'border-blue-600 bg-blue-50'
+                                            : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                                            }`}
+                                    >
+                                        <input
+                                            type="radio"
+                                            name={`question-${currentQuestion.id}`}
+                                            value={option.id}
+                                            checked={answers[currentQuestion.id] === option.id}
+                                            onChange={() => handleAnswerChange(currentQuestion.id, option.id)}
+                                            className="mr-3"
+                                        />
+                                        <span className="text-gray-800">{option.content}</span>
+                                    </label>
+                                )
                             ))}
                         </div>
                     )}

@@ -23,7 +23,7 @@ export function SubscriptionPage() {
   const [activationCode, setActivationCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copySuccess, setCopySuccess] = useState('');
-  const { profile, refreshProfile } = useUser();
+  const { user, refreshProfile } = useUser();
   const navigate = useNavigate();
   const { modalProps, showModal } = useModal(); // Utilisez le hook
 
@@ -75,8 +75,8 @@ export function SubscriptionPage() {
   };
 
   const handleCopyCode = () => {
-    if (!profile?.code) return;
-    navigator.clipboard.writeText(profile.code).then(() => {
+    if (!user?.code) return;
+    navigator.clipboard.writeText(user.code).then(() => {
       setCopySuccess('Copié !');
       setTimeout(() => setCopySuccess(''), 2000);
     }, () => {
@@ -86,7 +86,7 @@ export function SubscriptionPage() {
 
   const handleWhatsAppClick = () => {
     const phoneNumber = "22656658808"; // Le numéro WhatsApp de destination
-    const message = `Bonjour, je suis ${profile?.prenom || ''} ${profile?.nom || ''}. Mon code utilisateur est : ${profile?.code}. J'aimerais obtenir un code d'activation premium.`;
+    const message = `Bonjour, je suis ${user?.prenom || ''} ${user?.nom || ''}. Mon code utilisateur est : ${user?.code}. J'aimerais obtenir un code d'activation premium.`;
     const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
   };
@@ -106,7 +106,7 @@ export function SubscriptionPage() {
 
       <main className="p-4 space-y-6 ">
         {/* Statut de l'abonnement */}
-        {profile?.is_premium && profile.subscription_end_date ? (
+        {user?.is_premium && user.subscription_end_date ? (
           <div className="bg-gradient-to-br from-green-500 to-emerald-600 text-white p-6 rounded-xl shadow-lg">
             <h2 className="text-lg font-semibold mb-4">Statut de votre abonnement</h2>
             <div className="flex items-center space-x-4">
@@ -114,7 +114,7 @@ export function SubscriptionPage() {
               <div>
                 <p className="font-bold text-xl">Premium Actif</p>
                 <p className="text-sm text-gray-600">
-                  Expire le : {formatDate(profile.subscription_end_date as string)}
+                  Expire le : {formatDate(user.subscription_end_date as string)}
                 </p>
               </div>
             </div>
@@ -138,7 +138,7 @@ export function SubscriptionPage() {
 
 
         {/* Pourquoi passer Premium ? */}
-        {!profile?.is_premium && (
+        {!user?.is_premium && (
           <div className="bg-white p-6 rounded-xl shadow-md">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">Pourquoi passer Premium ?</h2>
             <ul className="space-y-3">
@@ -152,7 +152,7 @@ export function SubscriptionPage() {
           </div>
         )}
 
-        {!profile?.is_premium && (
+        {!user?.is_premium && (
           <>
             {/* Activer un code */}
             <div className="bg-white p-6 rounded-xl shadow-md">
@@ -183,14 +183,14 @@ export function SubscriptionPage() {
               <div className="bg-gray-100 p-3 rounded-lg flex items-center justify-between mb-4">
                 <div>
                   <p className="text-xs text-gray-500">Votre code utilisateur</p>
-                  <p className="text-lg font-mono font-bold text-gray-800 tracking-wider">{profile?.code || 'Chargement...'}</p>
+                  <p className="text-lg font-mono font-bold text-gray-800 tracking-wider">{user?.code || 'Chargement...'}</p>
                 </div>
                 <button onClick={handleCopyCode} className="flex items-center text-sm bg-blue-100 hover:bg-blue-200 text-blue-800 font-semibold py-2 px-3 rounded-md transition-all duration-200">
                   <ClipboardDocumentIcon className="h-5 w-5 mr-2" />
                   {copySuccess || 'Copier'}
                 </button>
               </div>
-              <button onClick={handleWhatsAppClick} disabled={!profile?.code} className="w-full flex items-center justify-center bg-green-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-600 disabled:bg-green-300 transition-colors shadow-sm hover:shadow-md">
+              <button onClick={handleWhatsAppClick} disabled={!user?.code} className="w-full flex items-center justify-center bg-green-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-600 disabled:bg-green-300 transition-colors shadow-sm hover:shadow-md">
                 <WhatsappIcon />
                 <span className="ml-2">Envoyer via WhatsApp</span>
               </button>

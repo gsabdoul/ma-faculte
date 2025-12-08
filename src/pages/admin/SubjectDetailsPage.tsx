@@ -1,6 +1,17 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabase';
+import { useUser } from '../../hooks/useUser';
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+} from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Modal } from '../../components/ui/Modal';
 import {
     ArrowLeftIcon,
@@ -13,7 +24,8 @@ import {
     BeakerIcon,
     DocumentTextIcon,
     PhotoIcon,
-    XMarkIcon
+    XMarkIcon,
+    Bars3Icon
 } from '@heroicons/react/24/outline';
 
 interface Option {
@@ -33,9 +45,76 @@ interface Question {
     imageUrl?: string;
 }
 
+function SortableQuestionItem({ question, openModalForEdit, handleDeleteQuestion, getTypeBadge }: { question: Question, openModalForEdit: (q: Question) => void, handleDeleteQuestion: (id: string) => void, getTypeBadge: (type: string) => React.ReactNode }) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+    } = useSortable({ id: question.id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+    };
+
+    return (
+        <div ref={setNodeRef} style={style} key={question.id} className="p-6 hover:bg-gray-50 transition-colors group">
+            <div className="flex justify-between items-start gap-4">
+                <div className="flex items-center text-gray-400 cursor-grab" {...attributes} {...listeners}>
+                    <Bars3Icon className="w-5 h-5" />
+                </div>
+                <div className="flex-1 space-y-3">
+                    <div className="flex items-center justify-between md:justify-start gap-3">
+                        {getTypeBadge(question.type)}
+                        <span className="text-xs text-gray-400 font-mono">ID: {String(question.id).slice(0, 8)}</span>
+                        {question.points && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                                {question.points} pts
+                            </span>
+                        )}
+                    </div>
+                    <p className="text-gray-900 font-medium text-lg leading-relaxed">{question.content}</p>
+                    {question.imageUrl && (
+                        <div className="mt-2">
+                            <img src={question.imageUrl} alt="Illustration question" className="max-h-48 rounded-lg border border-gray-200" />
+                        </div>
+                    )}
+                    {question.type === 'qcm' && question.options && question.options.length > 0 && (
+                        <div className="mt-4 bg-gray-50 rounded-lg p-4 border border-gray-100">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Options proposées</p>
+                            <ul className="space-y-2">
+                                {question.options.map((option) => (
+                                    <li key={option.id} className="flex items-start">
+                                        <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center mr-3 flex-shrink-0 ${option.isCorrect ? 'border-green-500 bg-green-50' : 'border-gray-300'}`}>
+                                            {option.isCorrect && <div className="w-2 h-2 rounded-full bg-green-500" />}
+                                        </div>
+                                        <span className={`${option.isCorrect ? 'text-green-700 font-medium' : 'text-gray-600'}`}>{option.content}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                </div>
+                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => openModalForEdit(question)} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors" title="Modifier">
+                        <PencilSquareIcon className="w-5 h-5" />
+                    </button>
+                    <button onClick={() => handleDeleteQuestion(question.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors" title="Supprimer">
+                        <TrashIcon className="w-5 h-5" />
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export function SubjectDetailsPage() {
     const { subjectId } = useParams<{ subjectId: string }>();
     const navigate = useNavigate();
+    const location = useLocation();
+    const { userProfile } = useUser();
     const [questions, setQuestions] = useState<Question[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [activeQuestion, setActiveQuestion] = useState<Question | null>(null);
@@ -43,6 +122,12 @@ export function SubjectDetailsPage() {
     const [newOption, setNewOption] = useState('');
     const [subjectDetails, setSubjectDetails] = useState({ title: '', moduleName: '' });
     const [uploading, setUploading] = useState(false);
+    const [editingOption, setEditingOption] = useState<{ id: string; content: string } | null>(null);
+
+    const sensors = useSensors(
+        useSensor(PointerSensor),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    );
 
     useEffect(() => {
         const fetchQuestions = async () => {
@@ -71,16 +156,18 @@ export function SubjectDetailsPage() {
         const fetchSubjectDetails = async () => {
             const { data, error } = await supabase
                 .from('sujets')
-                .select('titre, modules!inner(nom)')
+                .select('annee, session, modules!inner(nom)')
                 .eq('id', subjectId)
                 .single();
 
             if (error) {
                 console.error('Error fetching subject details:', error);
             } else {
+                const moduleName = Array.isArray(data.modules) ? data.modules[0]?.nom : (data.modules as any)?.nom;
+                const title = `Sujet de ${moduleName} - ${data.annee || ''} (${data.session || 'Normale'})`;
                 setSubjectDetails({
-                    title: data.titre,
-                    moduleName: Array.isArray(data.modules) ? data.modules[0]?.nom : (data.modules as any)?.nom,
+                    title: title,
+                    moduleName: moduleName,
                 });
             }
         };
@@ -247,6 +334,7 @@ export function SubjectDetailsPage() {
 
     const openModalForAdd = () => {
         setActiveQuestion({ id: '', content: '', isCorrect: false, type: 'qcm', options: [], points: 1 });
+        setEditingOption(null);
         setIsModalOpen(true);
     };
 
@@ -254,6 +342,7 @@ export function SubjectDetailsPage() {
         setActiveQuestion(question);
         setQuestionType(question.type);
         setIsModalOpen(true);
+        setEditingOption(null);
     };
 
     const getTypeBadge = (type: string) => {
@@ -269,12 +358,57 @@ export function SubjectDetailsPage() {
         }
     };
 
+    const handleDragEnd = (event: any) => {
+        const { active, over } = event;
+
+        if (active && over && active.id !== over.id) {
+            let reorderedQuestions: Question[] = [];
+            // Mettre à jour l'état local de manière synchrone
+            setQuestions((prevQuestions) => {
+                const oldIndex = prevQuestions.findIndex((q) => q.id === active.id);
+                const newIndex = prevQuestions.findIndex((q) => q.id === over.id);
+                const newItems = [...prevQuestions];
+                const [removed] = newItems.splice(oldIndex, 1);
+                newItems.splice(newIndex, 0, removed);
+                reorderedQuestions = newItems;
+                return reorderedQuestions;
+            });
+
+            // Préparer les données pour la mise à jour en batch
+            const updates = reorderedQuestions.map((question, index) => ({
+                id: question.id,
+                numero: index, // Le nouvel ordre est l'index dans le tableau
+            }));
+
+            // Envoyer les mises à jour à Supabase
+            supabase.from('questions').upsert(updates).then(({ error }) => {
+                if (error) console.error("Erreur lors de la mise à jour de l'ordre des questions:", error);
+            });
+        }
+    };
+
+
     return (
         <div className="min-h-screen bg-gray-50 p-8">
             {/* Header */}
             <div className="max-w-7xl mx-auto mb-8">
                 <button
-                    onClick={() => navigate(-1)}
+                    onClick={() => {
+                        // On regarde si une page de provenance a été passée dans l'état de la route
+                        const from = location.state?.from;
+                        if (from) {
+                            navigate(from); // On retourne à la page d'origine
+                        } else {
+                            // Sinon, on utilise une route par défaut basée sur le rôle
+                            if (userProfile?.role === 'admin') {
+                                navigate('/admin/sujets');
+                            } else if (userProfile?.role === 'writer') {
+                                navigate('/writer/dashboard');
+                            } else {
+                                navigate(-1); // Fallback de dernier recours
+                            }
+                        }
+                    }}
                     className="flex items-center text-gray-500 hover:text-gray-700 mb-4 transition-colors"
                 >
                     <ArrowLeftIcon className="w-4 h-4 mr-2" />
@@ -313,74 +447,21 @@ export function SubjectDetailsPage() {
                     </div>
 
                     {questions.length > 0 ? (
-                        <div className="divide-y divide-gray-200">
-                            {questions.map((question) => (
-                                <div key={question.id} className="p-6 hover:bg-gray-50 transition-colors group">
-                                    <div className="flex justify-between items-start gap-4">
-                                        <div className="flex-1 space-y-3">
-                                            <div className="flex items-center justify-between md:justify-start gap-3">
-                                                {getTypeBadge(question.type)}
-                                                <span className="text-xs text-gray-400 font-mono">ID: {String(question.id).slice(0, 8)}</span>
-                                                {question.points && (
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                                                        {question.points} pts
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            <p className="text-gray-900 font-medium text-lg leading-relaxed">
-                                                {question.content}
-                                            </p>
-
-                                            {question.imageUrl && (
-                                                <div className="mt-2">
-                                                    <img
-                                                        src={question.imageUrl}
-                                                        alt="Illustration question"
-                                                        className="max-h-48 rounded-lg border border-gray-200"
-                                                    />
-                                                </div>
-                                            )}
-
-                                            {question.type === 'qcm' && question.options && question.options.length > 0 && (
-                                                <div className="mt-4 bg-gray-50 rounded-lg p-4 border border-gray-100">
-                                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Options proposées</p>
-                                                    <ul className="space-y-2">
-                                                        {question.options.map((option) => (
-                                                            <li key={option.id} className="flex items-start">
-                                                                <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center mr-3 flex-shrink-0 ${option.isCorrect ? 'border-green-500 bg-green-50' : 'border-gray-300'}`}>
-                                                                    {option.isCorrect && <div className="w-2 h-2 rounded-full bg-green-500" />}
-                                                                </div>
-                                                                <span className={`${option.isCorrect ? 'text-green-700 font-medium' : 'text-gray-600'}`}>
-                                                                    {option.content}
-                                                                </span>
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={() => openModalForEdit(question)}
-                                                className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
-                                                title="Modifier"
-                                            >
-                                                <PencilSquareIcon className="w-5 h-5" />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDeleteQuestion(question.id)}
-                                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
-                                                title="Supprimer"
-                                            >
-                                                <TrashIcon className="w-5 h-5" />
-                                            </button>
-                                        </div>
-                                    </div>
+                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                            <SortableContext items={questions} strategy={verticalListSortingStrategy}>
+                                <div className="divide-y divide-gray-200">
+                                    {questions.map((question) => (
+                                        <SortableQuestionItem
+                                            key={question.id}
+                                            question={question}
+                                            openModalForEdit={openModalForEdit}
+                                            handleDeleteQuestion={handleDeleteQuestion}
+                                            getTypeBadge={getTypeBadge}
+                                        />
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
+                            </SortableContext>
+                        </DndContext>
                     ) : (
                         <div className="p-12 text-center">
                             <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -509,16 +590,50 @@ export function SubjectDetailsPage() {
                                                 checked={option.isCorrect}
                                                 onChange={() => {
                                                     const newOptions = [...(activeQuestion.options || [])];
-                                                    newOptions[index].isCorrect = !newOptions[index].isCorrect;
-                                                    setActiveQuestion({ ...activeQuestion, options: newOptions });
+                                                    newOptions[index] = { ...newOptions[index], isCorrect: !newOptions[index].isCorrect };
+                                                    setActiveQuestion(prev => prev ? { ...prev, options: newOptions } : null);
                                                 }}
                                                 className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                                             />
-                                            <span className="flex-1 text-sm text-gray-700">{option.content}</span>
+                                            {editingOption?.id === option.id ? (
+                                                <input
+                                                    type="text"
+                                                    value={editingOption?.content || ''}
+                                                    onChange={(e) => setEditingOption({ ...editingOption, content: e.target.value })}
+                                                    onBlur={() => {
+                                                        if (editingOption) {
+                                                            const newOptions = activeQuestion?.options?.map(opt =>
+                                                                opt.id === editingOption.id ? { ...opt, content: editingOption.content } : opt
+                                                            );
+                                                            setActiveQuestion(prev => prev ? { ...prev, options: newOptions } : null);
+                                                        }
+                                                        setEditingOption(null);
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            e.preventDefault();
+                                                            if (editingOption) {
+                                                                const newOptions = activeQuestion?.options?.map(opt =>
+                                                                    opt.id === editingOption.id ? { ...opt, content: editingOption.content } : opt
+                                                                );
+                                                                setActiveQuestion(prev => prev ? { ...prev, options: newOptions } : null);
+                                                            }
+                                                            setEditingOption(null);
+                                                        }
+                                                    }}
+                                                    autoFocus
+                                                    className="block flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
+                                                />
+                                            ) : (
+                                                <span className="flex-1 text-sm text-gray-700">{option.content}</span>
+                                            )}
+                                            <button onClick={() => setEditingOption({ id: option.id, content: option.content })} className="text-gray-400 hover:text-indigo-500">
+                                                <PencilSquareIcon className="w-4 h-4" />
+                                            </button>
                                             <button
                                                 onClick={() => {
                                                     const newOptions = activeQuestion.options?.filter((_, i) => i !== index);
-                                                    setActiveQuestion({ ...activeQuestion, options: newOptions });
+                                                    setActiveQuestion(prev => prev ? { ...prev, options: newOptions } : null);
                                                 }}
                                                 className="text-gray-400 hover:text-red-500"
                                             >

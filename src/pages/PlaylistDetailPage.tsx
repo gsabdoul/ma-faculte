@@ -137,8 +137,23 @@ export function PlaylistDetailPage() {
         setShowCorrection(false);
     };
 
+    const isMultipleChoice = (question: Question) => {
+        return question.type === 'qcm' && (question.options?.filter(o => o.is_correct).length ?? 0) > 1;
+    };
+
     const handleAnswerChange = (questionId: number, answer: any) => {
-        setAnswers(prev => ({ ...prev, [questionId]: answer }));
+        const question = questions.find(q => q.id === questionId);
+        if (question && isMultipleChoice(question)) {
+            setAnswers(prev => {
+                const existingAnswers = Array.isArray(prev[questionId]) ? prev[questionId] : [];
+                const newAnswers = existingAnswers.includes(answer)
+                    ? existingAnswers.filter(a => a !== answer)
+                    : [...existingAnswers, answer];
+                return { ...prev, [questionId]: newAnswers };
+            });
+        } else {
+            setAnswers(prev => ({ ...prev, [questionId]: answer }));
+        }
     };
 
     const handleNext = () => {
@@ -166,10 +181,19 @@ export function PlaylistDetailPage() {
             totalPoints += q.points || 1;
             const userAnswer = answers[q.id];
 
-            if (q.type === 'qcm' && userAnswer !== undefined) {
-                const correctOption = q.options?.find(o => o.is_correct);
-                if (correctOption && userAnswer === correctOption.id) {
-                    correctCount += (q.points || 1);
+            if (q.type === 'qcm' && userAnswer !== undefined && q.options) {
+                const correctOptions = q.options.filter(o => o.is_correct).map(o => o.id);
+                if (isMultipleChoice(q)) {
+                    const userAnswerSet = new Set(userAnswer as number[]);
+                    const correctOptionsSet = new Set(correctOptions);
+                    if (userAnswerSet.size === correctOptionsSet.size && [...userAnswerSet].every(id => correctOptionsSet.has(id))) {
+                        correctCount += (q.points || 1);
+                    }
+                } else {
+                    const correctOption = q.options.find(o => o.is_correct);
+                    if (correctOption && userAnswer === correctOption.id) {
+                        correctCount += (q.points || 1);
+                    }
                 }
             } else if (q.type === 'qroc' && qrocSelfEval[q.id] === true) {
                 correctCount += (q.points || 1);
@@ -277,9 +301,15 @@ export function PlaylistDetailPage() {
                             const userAnswer = answers[question.id];
                             let isCorrect = false;
 
-                            if (question.type === 'qcm') {
-                                const correctOption = question.options?.find(o => o.is_correct);
-                                isCorrect = !!(correctOption && userAnswer === correctOption.id);
+                            if (question.type === 'qcm' && question.options) {
+                                if (isMultipleChoice(question)) {
+                                    const correctIds = new Set(question.options.filter(o => o.is_correct).map(o => o.id));
+                                    const answerIds = new Set(userAnswer as number[] || []);
+                                    isCorrect = correctIds.size === answerIds.size && [...correctIds].every(id => answerIds.has(id));
+                                } else {
+                                    const correctOption = question.options.find(o => o.is_correct);
+                                    isCorrect = !!(correctOption && userAnswer === correctOption.id);
+                                }
                             }
 
                             return (
@@ -310,7 +340,10 @@ export function PlaylistDetailPage() {
                                     {question.type === 'qcm' && question.options && (
                                         <div className="space-y-2 mb-4">
                                             {question.options.map((option) => {
-                                                const isUserAnswer = userAnswer === option.id;
+                                                const isUserAnswer = isMultipleChoice(question)
+                                                    ? (userAnswer as number[] || []).includes(option.id)
+                                                    : userAnswer === option.id;
+
                                                 const isCorrectOption = option.is_correct === true;
 
                                                 return (
@@ -430,25 +463,47 @@ export function PlaylistDetailPage() {
 
                         {currentQuestion.type === 'qcm' && currentQuestion.options && (
                             <div className="space-y-3">
-                                {currentQuestion.options.map((option) => (
-                                    <label
-                                        key={option.id}
-                                        className={`block p-4 border-2 rounded-lg cursor-pointer transition-all ${answers[currentQuestion.id] === option.id
-                                            ? 'border-blue-600 bg-blue-50'
-                                            : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                                            }`}
-                                    >
-                                        <input
-                                            type="radio"
-                                            name={`question-${currentQuestion.id}`}
-                                            value={option.id}
-                                            checked={answers[currentQuestion.id] === option.id}
-                                            onChange={() => handleAnswerChange(currentQuestion.id, option.id)}
-                                            className="mr-3"
-                                        />
-                                        <span className="text-gray-800">{option.content}</span>
-                                    </label>
-                                ))}
+                                {isMultipleChoice(currentQuestion) ? (
+                                    currentQuestion.options.map((option) => (
+                                        <label
+                                            key={option.id}
+                                            className={`block p-4 border-2 rounded-lg cursor-pointer transition-all ${Array.isArray(answers[currentQuestion.id]) && answers[currentQuestion.id].includes(option.id)
+                                                ? 'border-blue-600 bg-blue-50'
+                                                : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                                                }`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                name={`question-${currentQuestion.id}`}
+                                                value={option.id}
+                                                checked={Array.isArray(answers[currentQuestion.id]) && answers[currentQuestion.id].includes(option.id)}
+                                                onChange={() => handleAnswerChange(currentQuestion.id, option.id)}
+                                                className="mr-3 rounded"
+                                            />
+                                            <span className="text-gray-800">{option.content}</span>
+                                        </label>
+                                    ))
+                                ) : (
+                                    currentQuestion.options.map((option) => (
+                                        <label
+                                            key={option.id}
+                                            className={`block p-4 border-2 rounded-lg cursor-pointer transition-all ${answers[currentQuestion.id] === option.id
+                                                ? 'border-blue-600 bg-blue-50'
+                                                : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                                                }`}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name={`question-${currentQuestion.id}`}
+                                                value={option.id}
+                                                checked={answers[currentQuestion.id] === option.id}
+                                                onChange={() => handleAnswerChange(currentQuestion.id, option.id)}
+                                                className="mr-3"
+                                            />
+                                            <span className="text-gray-800">{option.content}</span>
+                                        </label>
+                                    ))
+                                )}
                             </div>
                         )}
 

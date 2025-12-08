@@ -174,7 +174,7 @@ const ModulePerformanceBar = ({ module, score, quizCount }: any) => {
 };
 
 export function StatsPage() {
-    const { profile, user } = useUser();
+    const { user } = useUser();
     const [stats, setStats] = useState<any>(null);
     const [progressData, setProgressData] = useState<any[]>([]);
     const [moduleStats, setModuleStats] = useState<any[]>([]);
@@ -213,12 +213,12 @@ export function StatsPage() {
                 }
 
                 // Fetch module performance
-                if (profile?.faculte_id && profile?.niveau_id) {
+                if (user?.faculte_id && user?.niveau_id) {
                     const { data: modules } = await supabase
                         .from('module_faculte_niveau')
                         .select('modules(id, nom, icone_url)')
-                        .eq('faculte_id', profile.faculte_id)
-                        .eq('niveau_id', profile.niveau_id);
+                        .eq('faculte_id', user.faculte_id)
+                        .eq('niveau_id', user.niveau_id);
 
                     if (modules) {
                         const uniqueModules = Array.from(
@@ -272,7 +272,7 @@ export function StatsPage() {
         };
 
         fetchStats();
-    }, [user, profile]);
+    }, [user]);
 
     return (
         <div className="min-h-screen bg-gray-50 pb-20">

@@ -16,7 +16,7 @@ interface Note {
 }
 
 export function NotesPage() {
-    const { profile } = useUser();
+    const { user } = useUser();
     const navigate = useNavigate();
     const [notes, setNotes] = useState<Note[]>([]);
     const [loading, setLoading] = useState(true);
@@ -24,10 +24,10 @@ export function NotesPage() {
     const [editContent, setEditContent] = useState("");
 
     useEffect(() => {
-        if (profile) {
+        if (user) {
             fetchNotes();
         }
-    }, [profile]);
+    }, [user]);
 
     const fetchNotes = async () => {
         try {
@@ -43,7 +43,7 @@ export function NotesPage() {
                         type
                     )
                 `)
-                .eq('user_id', profile?.id)
+                .eq('user_id', user?.id)
                 .order('created_at', { ascending: false });
 
             if (error) throw error;

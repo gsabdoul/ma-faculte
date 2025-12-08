@@ -1,11 +1,11 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { ArrowRightIcon } from '@heroicons/react/24/solid';
 import { supabase } from '../supabase';
 
 export function WelcomePage() {
     const navigate = useNavigate();
     const [checkingSession, setCheckingSession] = useState(true);
-    const [termsAccepted, setTermsAccepted] = useState(false);
 
     useEffect(() => {
         const checkSession = async () => {
@@ -37,36 +37,20 @@ export function WelcomePage() {
                 <p className="text-lg text-gray-600 mt-2">Votre compagnon académique au Burkina Faso.</p>
             </div>
 
-            <div className="w-full max-w-sm mb-6 px-4">
-                <div className="flex items-start">
-                    <input
-                        id="terms-checkbox"
-                        type="checkbox"
-                        checked={termsAccepted}
-                        onChange={(e) => setTermsAccepted(e.target.checked)}
-                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-1"
-                    />
-                    <label htmlFor="terms-checkbox" className="ml-2 text-sm text-gray-600">
-                        J'ai lu et j'accepte les <Link to="/terms" className="underline font-medium text-blue-600 hover:text-blue-800">Termes & Conditions</Link> et la <Link to="/privacy" className="underline font-medium text-blue-600 hover:text-blue-800">Politique de Confidentialité</Link>.
-                    </label>
-                </div>
-            </div>
-
-            <div className="w-full max-w-sm space-y-4">
-                <Link
-                    to="/login"
-                    className={`w-full flex items-center justify-center px-4 py-3 border border-transparent text-base font-medium rounded-full text-white transition-colors ${termsAccepted ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-300 cursor-not-allowed'}`}
-                    onClick={(e) => !termsAccepted && e.preventDefault()}
-                >
-                    Se connecter
-                </Link>
+            <div className="w-full max-w-sm">
                 <Link
                     to="/register"
-                    className={`w-full flex items-center justify-center px-4 py-3 border text-base font-medium rounded-full transition-colors ${termsAccepted ? 'border-blue-600 text-blue-600 bg-white hover:bg-gray-50' : 'border-gray-300 text-gray-400 bg-gray-100 cursor-not-allowed'}`}
-                    onClick={(e) => !termsAccepted && e.preventDefault()}
+                    className={`w-full flex items-center justify-center gap-2 px-6 py-3.5 border border-transparent text-base font-bold rounded-full text-white transition-all duration-300 transform bg-gradient-to-r from-blue-600 to-indigo-600 shadow-lg hover:shadow-xl hover:-translate-y-1`}
                 >
-                    Créer un compte
+                    Commencez maintenant
+                    <ArrowRightIcon className="w-5 h-5 transition-transform group-hover:translate-x-1" />
                 </Link>
+
+                <p className="text-xs text-gray-500 mt-4 text-center">
+                    En continuant, vous acceptez nos <br />
+                    <Link to="/terms" className="underline hover:text-blue-600">Termes et Conditions</Link> et notre {' '}
+                    <Link to="/privacy" className="underline hover:text-blue-600">Politique de Confidentialité</Link>.
+                </p>
             </div>
         </div>
     );

@@ -22,7 +22,6 @@ import { WelcomePage } from './pages/WelcomePage';
 import { RequireAuth } from './components/auth/RequireAuth';
 import { LoginPage } from './pages/auth/LoginPage';
 import { WriterDashboard } from './pages/writer/WriterDashboard';
-import { AddSubjectPage } from './pages/writer/AddSubjectPage';
 import { AddBookPage } from './pages/writer/AddBookPage';
 import { AddDrivePage } from './pages/writer/AddDrivePage';
 import { EditSubjectPage } from './pages/writer/EditSubjectPage';
@@ -37,6 +36,7 @@ import { ManageFacultiesPage } from './pages/admin/ManageFacultiesPage';
 import { ManageSignalementsPage } from './pages/admin/ManageSignalementsPage';
 import { ManageCarouselPage } from './pages/admin/ManageCarouselPage';
 import { ManageKnowledgePage } from './pages/admin/ManageKnowledgePage';
+import { QuizSelectionPage } from './pages/QuizSelectionPage'; // Importer la nouvelle page
 import { QuizPage } from './pages/QuizPage';
 import { PlaylistsPage } from './pages/PlaylistsPage';
 import { PlaylistDetailPage } from './pages/PlaylistDetailPage';
@@ -70,7 +70,7 @@ export const router = createHashRouter([
                     { path: "livres", element: <BooksPage /> },
                     { path: "profil", element: <ProfilePage /> },
                     { path: "notifications", element: <NotificationsPage /> },
-                    { path: "quiz", element: <QuizPage /> },
+                    { path: "quiz", element: <QuizSelectionPage /> }, // Page de sélection des quiz
                     { path: "quiz/:subjectId", element: <QuizPage /> },
                     { path: "playlists", element: <PlaylistsPage /> },
                     { path: "playlists/:id", element: <PlaylistDetailPage /> },
@@ -101,7 +101,7 @@ export const router = createHashRouter([
         children: [
             { index: true, element: <Navigate to="dashboard" replace /> },
             { path: "dashboard", element: <WriterDashboard /> },
-            { path: "add-subject", element: <AddSubjectPage /> },
+            { path: "add-subject", element: <ManageSubjectsPage /> },
             { path: "add-book", element: <AddBookPage /> },
             { path: "add-drive", element: <AddDrivePage /> },
             { path: "edit-subject/:subjectId", element: <EditSubjectPage /> },

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, type ChangeEvent, type FormEvent } from 'react';
+import { useState, useMemo, useEffect, type ChangeEvent } from 'react';
 import { useUser } from '../../context/UserContext';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -11,63 +11,20 @@ import {
 } from '@heroicons/react/24/outline';
 import { supabase } from '../../supabase';
 import { Modal } from '../../components/ui/Modal';
+import { useSubjectForm } from '../../hooks/useSubjectForm';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
+import type { SubjectInfo, Module, University } from '../../types';
 
 type ModuleId = string;
-
-// Types for fetched data
-// Simplified frontend shapes: we map DB fields to { id, name }
-type Module = { id: string; name: string };
-type University = { id: string; name: string };
-type Faculty = { id: string; name: string };
-type Level = { id: string; name: string };
-
-// Aplatir/simplifier: we'll fetch sujets, modules and universites from Supabase
-
-interface SubjectInfo {
-    id: string;
-    moduleId: string;
-    moduleName: string;
-    universityId: string;
-    universityName: string;
-    faculteId: string;
-    faculteName: string;
-    niveauId: string;
-    niveauName: string;
-    correction?: string | null;
-    year?: number | null;
-    session?: string;
-    creatorId?: number;
-    creatorName?: string;
-}
-
-const emptySubject = {
-    id: null as string | null,
-    moduleId: '',
-    moduleName: '',
-    universityId: '',
-    universityName: '',
-    correction: '' as string,
-    year: '' as string | number | '',
-    faculteId: '',
-    faculteName: '',
-    niveauId: '',
-    niveauName: '',
-    session: 'Normale', // Default value
-};
 
 // Helper function to transform Supabase subject data into SubjectInfo
 const sujetToSubjectInfo = (
     s: any,
     mods: Module[],
-    unis: University[],
-    facs: Faculty[],
-    lvls: Level[]
+    unis: University[]
 ): SubjectInfo => {
     const module = mods.find(m => m.id === s.module_id);
     const uni = unis.find(u => u.id === s.universite_id);
-    const fac = facs.find(f => f.id === s.faculte_id);
-    const lvl = lvls.find(l => l.id === s.niveau_id);
     // La jointure se fait maintenant sur `profiles`, qui a `nom` et `prenom`
     const creatorName = s.created_by ? `${s.created_by.prenom || ''} ${s.created_by.nom || ''}`.trim() : 'Inconnu';
 
@@ -77,10 +34,6 @@ const sujetToSubjectInfo = (
         moduleName: module?.name || '',
         universityId: s.universite_id,
         universityName: uni?.name || '',
-        faculteId: s.faculte_id,
-        faculteName: fac?.name || '',
-        niveauId: s.niveau_id,
-        niveauName: lvl?.name || '',
         correction: s.correction ?? null,
         year: s.annee ?? null,
         session: s.session ?? 'Normale',
@@ -99,48 +52,43 @@ export function ManageSubjectsPage() {
     const [allSubjects, setAllSubjects] = useState<SubjectInfo[]>([]);
     const [modules, setModules] = useState<Module[]>([]);
     const [universities, setUniversities] = useState<University[]>([]);
-    const [faculties, setFaculties] = useState<Faculty[]>([]);
-    const [levels, setLevels] = useState<Level[]>([]);
 
     // Load modules, universites, faculties, and levels from Supabase on mount
     useEffect(() => {
         let cancelled = false;
+        if (!user) return; // Attendre que l'utilisateur soit chargé
+
         const load = async () => {
             try {
-                const [modsRes, unisRes, sujetsRes, facsRes, levelsRes] = await Promise.all([
+                let sujetsQuery = supabase
+                    .from('sujets')
+                    .select('*, created_by (id, nom, prenom)');
+
+                if (user.role === 'writer') {
+                    sujetsQuery = sujetsQuery.eq('created_by', user.id);
+                }
+
+                const [modsRes, unisRes, sujetsRes] = await Promise.all([
                     supabase.from('modules').select('id, nom'),
                     supabase.from('universites').select('id, nom'),
-                    // Maintenant que la FK pointe vers `profiles`, on peut faire la jointure
-                    supabase.from('sujets').select('*, created_by (id, nom, prenom)'),
-                    supabase.from('facultes').select('id, nom'),
-                    supabase.from('niveaux').select('id, nom'),
+                    sujetsQuery
                 ]);
 
                 if (cancelled) return;
 
-                // console.log('Modules:', modsRes.data);
-                // console.log('Universités:', unisRes.data);
-                // console.log('Facultés:', facsRes.data);
-                // console.log('Niveaux:', levelsRes.data);
-                // console.log('Sujets:', sujetsRes.data);
-
                 if (modsRes.error) throw modsRes.error;
                 if (unisRes.error) throw unisRes.error;
                 if (sujetsRes.error) throw sujetsRes.error;
-                if (facsRes.error) throw facsRes.error;
-                if (levelsRes.error) throw levelsRes.error;
 
                 const mods: Module[] = (modsRes.data || []).map((m: any) => ({ id: m.id, name: m.nom }));
                 const unis: University[] = (unisRes.data || []).map((u: any) => ({ id: u.id, name: u.nom }));
-                const facs: Faculty[] = (facsRes.data || []).map((f: any) => ({ id: f.id, name: f.nom }));
-                const lvls: Level[] = (levelsRes.data || []).map((l: any) => ({ id: l.id, name: l.nom }));
 
-                const sujets = (sujetsRes.data || []).map(s => sujetToSubjectInfo(s, mods, unis, facs, lvls));
+                const sujets = (sujetsRes.data || []).map(s =>
+                    sujetToSubjectInfo(s, mods, unis)
+                );
 
                 setModules(mods);
                 setUniversities(unis);
-                setFaculties(facs);
-                setLevels(lvls);
                 setAllSubjects(sujets);
             } catch (_err) {
                 console.error('Error loading data:', _err);
@@ -149,18 +97,24 @@ export function ManageSubjectsPage() {
 
         load();
         return () => { cancelled = true; };
-    }, []);
+    }, [user]);
     const [currentPage, setCurrentPage] = useState(1);
     const SUBJECTS_PER_PAGE = 10;
 
     // États pour la modale et le formulaire d'ajout
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [activeSubject, setActiveSubject] = useState(emptySubject);
-    const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+    const {
+        isModalOpen: isFormModalOpen,
+        activeSubject: formActiveSubject,
+        setActiveSubject: setFormActiveSubject,
+        formErrors,
+        isSubmitting,
+        handleSubmit: handleModalSubmit,
+        openModal: openFormModal,
+        closeModal: closeFormModal
+    } = useSubjectForm(setAllSubjects, { modules, universities });
 
     // État pour la modale de suppression
     const [subjectToDelete, setSubjectToDelete] = useState<SubjectInfo | null>(null);
-
     const universitiesByModule: Record<string, University[]> = useMemo(() => {
         // In the current schema universites are not directly linked to modules,
         // so we expose the full list for every module to keep the UI working.
@@ -191,95 +145,6 @@ export function ManageSubjectsPage() {
 
     const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
 
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
-    const validateForm = () => {
-        const errors: Record<string, string> = {};
-        if (!activeSubject.moduleId) errors.moduleId = 'Le module est requis.';
-        if (!activeSubject.universityId) errors.universityId = 'L\'université est requise.';
-        if (!activeSubject.faculteId) errors.faculteId = 'La faculté est requise.';
-        if (!activeSubject.niveauId) errors.niveauId = 'Le niveau est requis.';
-        if (!activeSubject.year) errors.year = 'L\'année est requise.';
-        return errors;
-    };
-
-    const handleModalSubmit = async (e: FormEvent) => {
-        e.preventDefault();
-        const errors = validateForm();
-        setFormErrors(errors);
-
-        if (Object.keys(errors).length > 0) {
-            return;
-        }
-
-        try {
-            setIsSubmitting(true);
-
-            const payload: any = {
-                module_id: activeSubject.moduleId,
-                universite_id: activeSubject.universityId,
-                faculte_id: activeSubject.faculteId,
-                niveau_id: activeSubject.niveauId,
-                correction: activeSubject.correction ? String(activeSubject.correction) : null,
-                annee: activeSubject.year !== '' && activeSubject.year !== null ? Number(activeSubject.year) : null,
-                session: activeSubject.session,
-            };
-
-            if (activeSubject.id) {
-                // Mise à jour
-                const updateRes = await supabase
-                    .from('sujets')
-                    .update(payload)
-                    .eq('id', activeSubject.id);
-                if (updateRes.error) throw updateRes.error;
-
-                // Mettre à jour l'état local
-                setAllSubjects(prevSubjects =>
-                    prevSubjects.map(subject => {
-                        if (subject.id === activeSubject.id) {
-                            // Ensure the updated object matches the SubjectInfo interface
-                            return {
-                                ...subject,
-                                moduleId: activeSubject.moduleId,
-                                moduleName: activeSubject.moduleName,
-                                universityId: activeSubject.universityId,
-                                universityName: activeSubject.universityName,
-                                faculteId: activeSubject.faculteId,
-                                faculteName: activeSubject.faculteName,
-                                niveauId: activeSubject.niveauId,
-                                niveauName: activeSubject.niveauName,
-                                correction: activeSubject.correction,
-                                year: Number(activeSubject.year),
-                                session: activeSubject.session,
-                            };
-                        }
-                        return subject;
-                    })
-                );
-            } else {
-                // Ajout
-                const insertRes = await supabase
-                    .from('sujets')
-                    .insert({ ...payload, created_by: user?.id })
-                    // On récupère le nouvel objet avec les infos du profil
-                    .select('*, created_by (id, nom, prenom)')
-                    .single();
-                if (insertRes.error) throw insertRes.error;
-
-                // Ajouter le nouveau sujet à l'état local
-                const newSubjectData = insertRes.data;
-                const newSubjectInfo = sujetToSubjectInfo(newSubjectData, modules, universities, faculties, levels);
-                setAllSubjects(prevSubjects => [newSubjectInfo, ...prevSubjects]);
-            }
-
-            setIsModalOpen(false);
-        } catch (err: any) {
-            alert(err?.message || 'Une erreur est survenue.');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
     const handleDeleteSubject = async () => {
         if (!subjectToDelete) return;
         try {
@@ -291,35 +156,6 @@ export function ManageSubjectsPage() {
         } finally {
             setSubjectToDelete(null);
         }
-    };
-
-    const openModalForEdit = (subject: SubjectInfo) => {
-        const module = modules.find(m => m.id === subject.moduleId);
-        const university = universities.find(u => u.id === subject.universityId);
-        const faculte = faculties.find(f => f.id === subject.faculteId);
-        const niveau = levels.find(l => l.id === subject.niveauId);
-        setActiveSubject({
-            id: subject.id,
-            moduleId: module?.id || '',
-            moduleName: module?.name || subject.moduleName,
-            universityId: university?.id || '',
-            universityName: university?.name || subject.universityName,
-            correction: subject.correction || '',
-            year: subject.year ?? '',
-            faculteId: faculte?.id || '',
-            faculteName: faculte?.name || subject.faculteName,
-            niveauId: niveau?.id || '',
-            niveauName: niveau?.name || subject.niveauName,
-            session: subject.session || 'Normale',
-        });
-        setIsModalOpen(true);
-        setFormErrors({});
-    };
-
-    const openModalForAdd = () => {
-        setActiveSubject(emptySubject);
-        setIsModalOpen(true);
-        setFormErrors({});
     };
 
     const openSubjectDetails = (subjectId: string) => {
@@ -347,7 +183,7 @@ export function ManageSubjectsPage() {
                 </div>
 
                 <button
-                    onClick={openModalForAdd}
+                    onClick={() => openFormModal()}
                     className="flex items-center bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 ml-4 flex-shrink-0"
                 >
                     <DocumentPlusIcon className="h-5 w-5 mr-2" />
@@ -386,7 +222,7 @@ export function ManageSubjectsPage() {
                                     >
                                         <EyeIcon className="h-5 w-5" />
                                     </button>
-                                    <button onClick={() => openModalForEdit(subject)} className="text-gray-500 hover:text-blue-500 p-2" title="Modifier"><PencilIcon className="h-5 w-5" /></button>
+                                    <button onClick={() => openFormModal(subject)} className="text-gray-500 hover:text-blue-500 p-2" title="Modifier"><PencilIcon className="h-5 w-5" /></button>
                                     <button onClick={() => setSubjectToDelete(subject)} className="text-gray-500 hover:text-red-500 p-2" title="Supprimer"><TrashIcon className="h-5 w-5" /></button>
                                 </td>
                             </tr>
@@ -413,12 +249,9 @@ export function ManageSubjectsPage() {
             )}
 
             <Modal
-                isOpen={isModalOpen}
-                onClose={() => {
-                    setIsModalOpen(false);
-                    setFormErrors({});
-                }}
-                title={activeSubject.id ? "Modifier le sujet" : "Ajouter un nouveau sujet"}
+                isOpen={isFormModalOpen}
+                onClose={closeFormModal}
+                title={formActiveSubject.id ? "Modifier le sujet" : "Ajouter un nouveau sujet"}
             >
                 <form onSubmit={handleModalSubmit}>
                     <div className="space-y-4">
@@ -427,10 +260,9 @@ export function ManageSubjectsPage() {
                             <div className={`rounded-md shadow-sm ${formErrors.moduleId ? 'border border-red-500' : ''}`}>
                                 <SearchableSelect
                                     options={modules}
-                                    value={activeSubject.moduleName}
+                                    value={formActiveSubject.moduleName}
                                     onChange={(option: any) => {
-                                        setActiveSubject(prev => ({ ...prev, moduleId: option?.id || '', moduleName: option?.name || '' }));
-                                        if (formErrors.moduleId) setFormErrors(prev => ({ ...prev, moduleId: '' }));
+                                        setFormActiveSubject(prev => ({ ...prev, moduleId: option?.id || '', moduleName: option?.name || '' }));
                                     }}
                                     placeholder="Rechercher un module..."
                                 />
@@ -442,10 +274,9 @@ export function ManageSubjectsPage() {
                             <div className={`rounded-md shadow-sm ${formErrors.universityId ? 'border border-red-500' : ''}`}>
                                 <SearchableSelect
                                     options={universities}
-                                    value={activeSubject.universityName}
+                                    value={formActiveSubject.universityName}
                                     onChange={(option: any) => {
-                                        setActiveSubject(prev => ({ ...prev, universityId: option?.id || '', universityName: option?.name || '' }));
-                                        if (formErrors.universityId) setFormErrors(prev => ({ ...prev, universityId: '' }));
+                                        setFormActiveSubject(prev => ({ ...prev, universityId: option?.id || '', universityName: option?.name || '' }));
                                     }}
                                     placeholder="Rechercher une université..."
                                 />
@@ -453,45 +284,14 @@ export function ManageSubjectsPage() {
                             {formErrors.universityId && <p className="text-red-500 text-xs mt-1">{formErrors.universityId}</p>}
                         </div>
                         <div>
-                            <label htmlFor="faculteId" className="block text-sm font-medium text-gray-700">Faculté</label>
-                            <div className={`rounded-md shadow-sm ${formErrors.faculteId ? 'border border-red-500' : ''}`}>
-                                <SearchableSelect
-                                    options={faculties}
-                                    value={activeSubject.faculteName}
-                                    onChange={(option: any) => {
-                                        setActiveSubject(prev => ({ ...prev, faculteId: option?.id || '', faculteName: option?.name || '' }));
-                                        if (formErrors.faculteId) setFormErrors(prev => ({ ...prev, faculteId: '' }));
-                                    }}
-                                    placeholder="Rechercher une faculté..."
-                                />
-                            </div>
-                            {formErrors.faculteId && <p className="text-red-500 text-xs mt-1">{formErrors.faculteId}</p>}
-                        </div>
-                        <div>
-                            <label htmlFor="niveauId" className="block text-sm font-medium text-gray-700">Niveau</label>
-                            <div className={`rounded-md shadow-sm ${formErrors.niveauId ? 'border border-red-500' : ''}`}>
-                                <SearchableSelect
-                                    options={levels}
-                                    value={activeSubject.niveauName}
-                                    onChange={(option: any) => {
-                                        setActiveSubject(prev => ({ ...prev, niveauId: option?.id || '', niveauName: option?.name || '' }));
-                                        if (formErrors.niveauId) setFormErrors(prev => ({ ...prev, niveauId: '' }));
-                                    }}
-                                    placeholder="Rechercher un niveau..."
-                                />
-                            </div>
-                            {formErrors.niveauId && <p className="text-red-500 text-xs mt-1">{formErrors.niveauId}</p>}
-                        </div>
-                        <div>
                             <label htmlFor="year" className="block text-sm font-medium text-gray-700">Année</label>
                             <input
                                 type="number"
                                 name="year"
                                 id="year"
-                                value={activeSubject.year || ''}
+                                value={formActiveSubject.year || ''}
                                 onChange={(e) => {
-                                    setActiveSubject(prev => ({ ...prev, year: e.target.value }));
-                                    if (formErrors.year) setFormErrors(prev => ({ ...prev, year: '' }));
+                                    setFormActiveSubject(prev => ({ ...prev, year: e.target.value }));
                                 }}
                                 className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${formErrors.year ? 'border-red-500' : 'border-gray-300'}`}
                             />
@@ -502,8 +302,8 @@ export function ManageSubjectsPage() {
                             <select
                                 name="session"
                                 id="session"
-                                value={activeSubject.session}
-                                onChange={(e) => setActiveSubject(prev => ({ ...prev, session: e.target.value }))}
+                                value={formActiveSubject.session}
+                                onChange={(e) => setFormActiveSubject(prev => ({ ...prev, session: e.target.value }))}
                                 className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                             >
                                 <option value="Normale">Normale</option>
@@ -517,8 +317,8 @@ export function ManageSubjectsPage() {
                                 name="correction"
                                 id="correction"
                                 rows={4}
-                                value={activeSubject.correction || ''}
-                                onChange={(e) => setActiveSubject(prev => ({ ...prev, correction: e.target.value }))}
+                                value={formActiveSubject.correction || ''}
+                                onChange={(e) => setFormActiveSubject(prev => ({ ...prev, correction: e.target.value }))}
                                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                             />
                         </div>
@@ -526,10 +326,7 @@ export function ManageSubjectsPage() {
                     <div className="mt-6 flex justify-end space-x-3">
                         <button
                             type="button"
-                            onClick={() => {
-                                setIsModalOpen(false);
-                                setFormErrors({});
-                            }}
+                            onClick={closeFormModal}
                             className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
                         >
                             Annuler
@@ -539,7 +336,7 @@ export function ManageSubjectsPage() {
                             disabled={isSubmitting}
                             className="bg-blue-600 disabled:bg-blue-300 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
                         >
-                            {activeSubject.id ? 'Enregistrer' : 'Ajouter'}
+                            {formActiveSubject.id ? 'Enregistrer' : 'Ajouter'}
                         </button>
                     </div>
                 </form>

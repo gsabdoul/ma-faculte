@@ -77,22 +77,10 @@ export function AddSubjectPage() {
         setError(null);
 
         try {
-            // Récupérer faculte_id et niveau_id du profil de l'utilisateur
-            const { data: profileData, error: profileError } = await supabase
-                .from('profiles')
-                .select('faculte_id, niveau_id')
-                .eq('id', user.id)
-                .single();
-
-            if (profileError) throw profileError;
-            if (!profileData) throw new Error("Profil utilisateur introuvable.");
-
             // Insérer le sujet dans la base de données
             const { error: insertError } = await supabase.from('sujets').insert({
                 module_id: selectedModuleId,
                 universite_id: selectedUniversityId,
-                faculte_id: profileData.faculte_id,
-                niveau_id: profileData.niveau_id,
                 created_by: user.id,
                 annee: year ? Number(year) : null,
                 session: session,

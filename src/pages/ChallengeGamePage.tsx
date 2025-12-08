@@ -128,12 +128,17 @@ export default function ChallengeGamePage() {
         );
     }
 
+    if (!id) {
+        return <div>Challenge non trouvé.</div>;
+    }
+
     return (
         <QuizPlayer
             questions={questions}
             onBack={() => navigate('/challenges')}
             mode="challenge"
             onComplete={handleComplete}
+            quizId={id}
         />
     );
 }
