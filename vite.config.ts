@@ -5,8 +5,8 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  // IMPORTANT: Changez ceci pour correspondre au nom de votre dépôt GitHub
-  base: "/ma-faculte/",
+  // IMPORTANT: Met à jour pour supporter à la fois GitHub Pages et l'APK via Capacitor
+  base: "./",
   plugins: [
     react(),
     tailwindcss(),
@@ -17,7 +17,7 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        navigateFallback: '/ma-faculte/index.html',
+        navigateFallback: 'index.html',
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6MB
         runtimeCaching: [
           {
@@ -76,8 +76,8 @@ export default defineConfig({
       manifest: {
         name: 'Ma Faculté',
         short_name: 'MaFaculté',
-        start_url: '/ma-faculte/',
-        scope: '/ma-faculte/',
+        start_url: './',
+        scope: './',
         display: 'standalone',
         theme_color: '#ffffff',
         background_color: '#ffffff',
