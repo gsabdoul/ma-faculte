@@ -48,8 +48,8 @@ export function WelcomePage() {
 
                 <p className="text-xs text-gray-500 mt-4 text-center">
                     En continuant, vous acceptez nos <br />
-                    <Link to="/terms" className="underline hover:text-blue-600">Termes et Conditions</Link> et notre {' '}
-                    <Link to="/privacy" className="underline hover:text-blue-600">Politique de Confidentialité</Link>.
+                    <Link to="https://drive.google.com/file/d/147PFQ1cSDWwEbBFSCRjeowEFTLgJ4J8n/view?usp=sharing" className="underline hover:text-blue-600">Termes et Conditions</Link> et notre {' '}
+                    <Link to="https://drive.google.com/file/d/1b-WtUZuNAedPdWiRdpmtjeiJQ3zIN7zC/view?usp=sharing" className="underline hover:text-blue-600">Politique de Confidentialité</Link>.
                 </p>
             </div>
         </div>
