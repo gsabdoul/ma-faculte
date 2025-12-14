@@ -11,6 +11,7 @@ interface ChatInterfaceProps {
         url: string;
         content?: string; // Extracted PDF text
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     userContext?: any;
     onClose?: () => void;
     className?: string;
@@ -107,7 +108,7 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
         };
 
         loadConversation();
-    }, [subjectContext?.id, userContext?.id]);
+    }, [subjectContext, userContext]);
 
     useEffect(() => {
         scrollToBottom();
@@ -229,7 +230,7 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                                             )
                                         );
                                     }
-                                } catch (err) {
+                                } catch {
                                     // Ignore parse errors for partial chunks
                                 }
                             }
@@ -267,7 +268,7 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                     return prev;
                 });
 
-            } catch (error: any) {
+            } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
                 console.error('Error in chat flow:', error);
 
                 if (error.name === 'AbortError') {
@@ -424,7 +425,9 @@ export function ChatInterface({ subjectContext, userContext, onClose, className 
                                     <ReactMarkdown
                                         remarkPlugins={[remarkGfm]}
                                         components={{
+                                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
                                             pre: ({ node, ...props }) => <pre className="overflow-auto w-full my-2 bg-gray-800 text-white p-2 rounded" {...props} />,
+                                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
                                             code: ({ node, ...props }) => <code className="bg-gray-200 text-red-500 px-1 rounded" {...props} />
                                         }}
                                     >

@@ -10,6 +10,7 @@ const AI_MODEL = 'amazon/nova-2-lite-v1:free';
 
 export function ChatPage() {
   const [message, setMessage] = useState('');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [messages, setMessages] = useState<{ id: number; text: string; sender: 'user' | 'ai'; attachments?: any[]; suggestions?: string[] }[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -32,6 +33,7 @@ export function ChatPage() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [userContext, setUserContext] = useState<any>(null);
 
   // Gestion du contexte sujet (PDF)
@@ -50,7 +52,7 @@ export function ChatPage() {
         }]);
       }
     }
-  }, [location.state]);
+  }, [location.state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initialisation : Charger l'utilisateur, son profil et ses conversations
   useEffect(() => {
@@ -77,8 +79,11 @@ export function ChatPage() {
           setUserContext({
             nom: profile.nom,
             prenom: profile.prenom,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             universite: (profile.universites as any)?.nom,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             faculte: (profile.facultes as any)?.nom,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             niveau: (profile.niveaux as any)?.nom
           });
         }
@@ -286,7 +291,7 @@ export function ChatPage() {
                     )
                   );
                 }
-              } catch (err) {
+              } catch (_err) {
                 // Ignore parse errors for partial chunks
               }
             }
@@ -453,7 +458,7 @@ export function ChatPage() {
         } else {
           throw new Error("Impossible de démarrer la discussion, l'ID de conversation est manquant.");
         }
-      } catch (error: any) {
+      } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
         console.error('Error in chat flow:', error);
 
         let errorMessage = `Erreur: ${error.message}`;
@@ -464,7 +469,7 @@ export function ChatPage() {
             if (errorDetails.error?.message.includes('No endpoints found')) {
               errorMessage = "Erreur: Le modèle d'IA demandé n'est pas disponible. Veuillez contacter l'administrateur.";
             }
-          } catch (parseError) {
+          } catch (_parseError) {
             // Fallback to generic message if parsing fails
           }
         }
@@ -704,7 +709,7 @@ export function ChatPage() {
       } else {
         throw new Error("Impossible de mettre à jour la discussion, l'ID de conversation est manquant.");
       }
-    } catch (error: any) {
+    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       console.error('Error updating message:', error);
       if (error.name !== 'AbortError') {
         setMessages((prev) => [
@@ -909,6 +914,7 @@ export function ChatPage() {
                               }
                               return <pre className="overflow-auto w-full my-2 bg-gray-50 p-3 rounded-md text-gray-800" {...props}>{children}</pre>;
                             },
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
                             code: ({ node, inline, className, children, ...props }: any) => {
                               // Appliquer le style rouge uniquement pour le code "inline"
                               if (inline) {
@@ -989,6 +995,7 @@ export function ChatPage() {
                           {msg.text && <div className="break-words whitespace-pre-wrap">{msg.text}</div>}
                           {msg.attachments && msg.attachments.length > 0 && (
                             <div className="space-y-2">
+                              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                               {msg.attachments.map((attachment: any, idx: number) => (
                                 <div key={idx}>
                                   {attachment.type?.startsWith('image/') ? (

@@ -69,10 +69,10 @@ export function EditDrivePage() {
                 setSelectedNiveauId(drive.niveau_id);
                 setSelectedNiveauName(drive.niveaux?.nom || '');
 
-                setFaculties(facRes.data.map((f: any) => ({ id: f.id, name: f.nom })));
-                setNiveaux(nivRes.data.map((n: any) => ({ id: n.id, name: n.nom })));
-            } catch (err: any) {
-                setError(err.message);
+                setFaculties((facRes.data || []).map((f: { id: string; nom: string }) => ({ id: f.id, name: f.nom })));
+                setNiveaux((nivRes.data || []).map((n: { id: string; nom: string }) => ({ id: n.id, name: n.nom })));
+            } catch (err) {
+                setError(err instanceof Error ? err.message : String(err));
             } finally {
                 setLoading(false);
             }
@@ -92,7 +92,7 @@ export function EditDrivePage() {
                 url: url,
                 faculte_id: selectedFacultyId,
                 niveau_id: selectedNiveauId,
-            }).eq('id', driveId);
+            }).eq('id', driveId!);
 
             if (updateError) throw updateError;
 
@@ -103,8 +103,8 @@ export function EditDrivePage() {
                 onConfirm: () => navigate('/writer/dashboard')
             });
 
-        } catch (err: any) {
-            setError(err.message || "Une erreur est survenue.");
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Une erreur est survenue.");
         } finally {
             setSubmitting(false);
         }
@@ -149,9 +149,9 @@ export function EditDrivePage() {
                         <SearchableSelect
                             options={faculties}
                             value={selectedFacultyName}
-                            onChange={(option: any) => {
-                                setSelectedFacultyId(option?.id || '');
-                                setSelectedFacultyName(option?.name || '');
+                            onChange={(option: { id: string; name: string } | null) => {
+                                setSelectedFacultyId(option?.id ?? '');
+                                setSelectedFacultyName(option?.name ?? '');
                             }}
                         />
                     </div>
@@ -160,9 +160,9 @@ export function EditDrivePage() {
                         <SearchableSelect
                             options={niveaux}
                             value={selectedNiveauName}
-                            onChange={(option: any) => {
-                                setSelectedNiveauId(option?.id || '');
-                                setSelectedNiveauName(option?.name || '');
+                            onChange={(option: { id: string; name: string } | null) => {
+                                setSelectedNiveauId(option?.id ?? '');
+                                setSelectedNiveauName(option?.name ?? '');
                             }}
                         />
                     </div>

@@ -9,9 +9,18 @@ import {
     FireIcon
 } from '@heroicons/react/24/outline';
 
-const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }: any) => {
+interface StatCardProps {
+    title: string;
+    value: string | number;
+    icon: any; // HeroIcon type is complex, keeping any or generic for now, or React.ElementType
+    color: string;
+    subtitle?: string;
+    trend?: number;
+}
+
+const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }: StatCardProps) => {
     // Map colors to their light variants for backgrounds
-    const bgColorMap: any = {
+    const bgColorMap: Record<string, string> = {
         'bg-blue-500': 'bg-blue-50',
         'bg-green-500': 'bg-green-50',
         'bg-orange-500': 'bg-orange-50',
@@ -38,7 +47,39 @@ const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }: any) => 
     );
 };
 
-const ProgressChart = ({ data, title }: { data: any[], title: string }) => {
+
+interface QuizConfig {
+    moduleId?: string;
+    [key: string]: any;
+}
+
+interface Quiz {
+    id: string;
+    created_at: string;
+    score: number;
+    total_questions: number;
+    status: string;
+    config: QuizConfig | string;
+}
+
+interface ChartData {
+    date: string;
+    score: number;
+}
+
+interface ModuleStat {
+    module: {
+        id: string;
+        nom: string;
+        icone_url?: string;
+    };
+    score: number;
+    quizCount: number;
+    questionsDone: number;
+    totalQuestionsInDb: number;
+}
+
+const ProgressChart = ({ data, title }: { data: ChartData[], title: string }) => {
     if (!data || data.length === 0) return null;
 
     const maxScore = Math.max(...data.map(d => d.score), 100);
@@ -138,7 +179,16 @@ const ProgressChart = ({ data, title }: { data: any[], title: string }) => {
     );
 };
 
-const ModulePerformanceBar = ({ module, score, quizCount }: any) => {
+interface ModulePerformanceBarProps {
+    module: {
+        nom: string;
+        icone_url?: string;
+    };
+    score: number;
+    quizCount: number;
+}
+
+const ModulePerformanceBar = ({ module, score, quizCount }: ModulePerformanceBarProps) => {
     const percentage = Math.min(score, 100);
 
     return (
@@ -173,11 +223,17 @@ const ModulePerformanceBar = ({ module, score, quizCount }: any) => {
     );
 };
 
+interface UserStats {
+    quizzes_completed: number;
+    average_score: number;
+    total_points: number;
+}
+
 export function StatsPage() {
     const { user } = useUser();
-    const [stats, setStats] = useState<any>(null);
-    const [progressData, setProgressData] = useState<any[]>([]);
-    const [moduleStats, setModuleStats] = useState<any[]>([]);
+    const [stats, setStats] = useState<UserStats | null>(null);
+    const [progressData, setProgressData] = useState<ChartData[]>([]);
+    const [moduleStats, setModuleStats] = useState<ModuleStat[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -195,73 +251,102 @@ export function StatsPage() {
 
                 setStats(userStats);
 
-                // Fetch quiz history for progress chart
-                const { data: quizzes } = await supabase
-                    .from('user_quizzes')
-                    .select('created_at, score, total_questions, status')
-                    .eq('user_id', user.id)
-                    .eq('status', 'completed')
-                    .order('created_at', { ascending: true })
-                    .limit(20);
 
-                if (quizzes) {
-                    const chartData = quizzes.map((q: any) => ({
+
+                const { data: allQuizzes, error: quizError } = await supabase
+                    .from('user_quizzes')
+                    .select('id, created_at, score, total_questions, status, config')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: true });
+
+                if (quizError) throw quizError;
+
+
+
+                if (allQuizzes) {
+                    const recentQuizzes = allQuizzes.slice(-20);
+                    const chartData: ChartData[] = recentQuizzes.map((q: Quiz) => ({
                         date: new Date(q.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
                         score: Math.round((q.score / q.total_questions) * 100)
                     }));
                     setProgressData(chartData);
-                }
 
-                // Fetch module performance
-                if (user?.faculte_id && user?.niveau_id) {
-                    const { data: modules } = await supabase
-                        .from('module_faculte_niveau')
-                        .select('modules(id, nom, icone_url)')
-                        .eq('faculte_id', user.faculte_id)
-                        .eq('niveau_id', user.niveau_id);
+                    // 1. Extract unique module IDs from quiz configs
+                    const moduleIds = new Set<string>();
+                    const quizzesByModule: Record<string, Quiz[]> = {};
 
-                    if (modules) {
-                        const uniqueModules = Array.from(
-                            new Map(modules.map((m: any) => [m.modules.id, m.modules])).values()
-                        );
+                    allQuizzes.forEach((q: Quiz) => {
+                        try {
+                            const config = typeof q.config === 'string' ? JSON.parse(q.config) : q.config;
+                            if (config && config.moduleId) {
+                                moduleIds.add(config.moduleId);
+                                if (!quizzesByModule[config.moduleId]) {
+                                    quizzesByModule[config.moduleId] = [];
+                                }
+                                quizzesByModule[config.moduleId].push(q);
+                            }
+                        } catch (e) {
+                            // Ignore invalid configs
+                        }
+                    });
 
-                        // Calculate stats for each module
-                        const modulePerformance = await Promise.all(
-                            uniqueModules.map(async (module: any) => {
-                                // Get quizzes for this module
-                                const { data: moduleQuizzes } = await supabase
-                                    .from('user_quizzes')
-                                    .select('score, total_questions, config')
-                                    .eq('user_id', user.id)
-                                    .eq('status', 'completed');
+                    // 2. Fetch details for these modules
+                    if (moduleIds.size > 0) {
+                        const { data: modulesData } = await supabase
+                            .from('modules')
+                            .select('id, nom, icone_url')
+                            .in('id', Array.from(moduleIds));
 
-                                // Filter quizzes by module (from config)
-                                const filteredQuizzes = moduleQuizzes?.filter((q: any) => {
-                                    try {
-                                        const config = typeof q.config === 'string' ? JSON.parse(q.config) : q.config;
-                                        return config?.moduleId === module.id;
-                                    } catch {
-                                        return false;
-                                    }
-                                }) || [];
+                        if (modulesData) {
+                            // 3. Aggregate stats
+                            const stats = await Promise.all(modulesData.map(async (module: ModuleStat['module']) => {
+                                const moduleQuizzes = quizzesByModule[module.id] || [];
 
-                                const avgScore = filteredQuizzes.length > 0
-                                    ? Math.round(
-                                        filteredQuizzes.reduce((sum: number, q: any) =>
-                                            sum + (q.score / q.total_questions) * 100, 0
-                                        ) / filteredQuizzes.length
-                                    )
+                                // Get total questions available in DB for this module
+                                // This requires two steps: get subjects for module, then count questions for subjects
+                                const { data: subjects } = await supabase
+                                    .from('sujets')
+                                    .select('id')
+                                    .eq('module_id', module.id);
+
+                                let totalQuestionsInDb = 0;
+                                if (subjects && subjects.length > 0) {
+                                    const subjectIds = subjects.map(s => s.id);
+                                    const { count } = await supabase
+                                        .from('questions')
+                                        .select('*', { count: 'exact', head: true })
+                                        .in('sujet_id', subjectIds);
+                                    totalQuestionsInDb = count || 0;
+                                }
+
+                                // Calculate QUESTIONS ANSWERED (Progress)
+                                // We sum up 'total_questions' from completed quizzes. 
+                                // Note: This assumes quizzes don't overlap or user wants to see volume done.
+                                // If we want UNIQUE questions answered, we'd need to store question IDs in user_quizzes (we do in 'questions' jsonb but it's heavy to parse all).
+                                // For now, let's use the sum of questions from quizzes as "questions done".
+                                const questionsDone = moduleQuizzes.reduce((sum: number, q: Quiz) => sum + (q.total_questions || 0), 0);
+
+                                // Calculate coverage percentage
+                                // Cap at 100% if they re-did questions
+                                const progress = totalQuestionsInDb > 0
+                                    ? Math.min(Math.round((questionsDone / totalQuestionsInDb) * 100), 100)
                                     : 0;
 
                                 return {
                                     module,
-                                    score: avgScore,
-                                    quizCount: filteredQuizzes.length
+                                    score: progress, // This is now PROGRESS %
+                                    quizCount: moduleQuizzes.length,
+                                    // Add extra metadata for tooltip/display if needed later
+                                    questionsDone,
+                                    totalQuestionsInDb
                                 };
-                            })
-                        );
+                            }));
 
-                        setModuleStats(modulePerformance.filter(m => m.quizCount > 0).sort((a, b) => b.score - a.score));
+                            // Sort by progress descending
+                            setModuleStats(stats.sort((a, b) => b.score - a.score));
+                        }
+                    } else {
+                        setModuleStats([]);
                     }
                 }
             } catch (err) {

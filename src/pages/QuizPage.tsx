@@ -20,7 +20,7 @@ const updateUserStats = async (score: number, total: number) => {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError || !user) throw new Error('User not authenticated');
 
-        const { data, error } = await supabase
+        const { error } = await supabase
             .from('user_stats')
             .upsert({
                 user_id: user.id,
@@ -28,11 +28,13 @@ const updateUserStats = async (score: number, total: number) => {
                 total_points: score,
                 average_score: total > 0 ? (score / total) * 100 : 0,
                 updated_at: new Date().toISOString()
-            }, { onConflict: 'user_id' });
+            }, { onConflict: 'user_id' })
+            .select()
+            .single();
 
         if (error) throw error;
 
-        console.log('User stats updated:', data);
+
     } catch (err) {
         console.error('Error updating user stats:', err);
     }

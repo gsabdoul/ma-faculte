@@ -1,5 +1,4 @@
-// @ts-ignore
-declare const Deno: any;
+declare const Deno: { env: { get: (name: string) => string | undefined } };
 
 // @deno-types="npm:@supabase/supabase-js@2"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -10,6 +9,16 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const VOYAGE_API_KEY = Deno.env.get('VOYAGE_API_KEY');
 const VOYAGE_API_URL = 'https://api.voyageai.com/v1/embeddings';
+
+type ChatMessage = { sender: 'user' | 'assistant'; text: string };
+type DocChunk = {
+  content: string;
+  metadata?: { page?: number; section?: string } | undefined;
+  sujet_id?: string | null;
+  livre_id?: string | null;
+  source_id?: string | null;
+};
+type SourceMeta = { type: 'sujet' | 'livre' | 'source'; page?: number; section?: string };
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -31,7 +40,7 @@ Deno.serve(async (req: Request) => {
         let body;
         try {
             body = await req.json();
-        } catch (e) {
+        } catch {
             throw new Error('Invalid JSON body');
         }
 
@@ -42,12 +51,12 @@ Deno.serve(async (req: Request) => {
 
         // 3. RAG: Search for relevant context
         let ragContext = "";
-        let sourcesMetadata = [];
+        let sourcesMetadata: SourceMeta[] = [];
 
         if (VOYAGE_API_KEY) {
             try {
                 // Get the last user message for search query
-                const lastUserMessage = messages.filter((m: any) => m.sender === 'user').pop();
+                const lastUserMessage = (messages as ChatMessage[]).filter((m) => m.sender === 'user').pop();
 
                 if (lastUserMessage) {
                     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -89,7 +98,7 @@ Deno.serve(async (req: Request) => {
                     } else if (chunks && chunks.length > 0) {
                         console.log(`Found ${chunks.length} relevant chunks`);
 
-                        ragContext = chunks.map((c: any) => {
+                        ragContext = (chunks as DocChunk[]).map((c) => {
                             // Determine the source type
                             let sourceType = 'Document';
                             let sourceInfo = '';
@@ -111,7 +120,7 @@ ${c.content}
 `;
                         }).join('\n\n');
 
-                        sourcesMetadata = chunks.map((c: any) => ({
+                        sourcesMetadata = (chunks as DocChunk[]).map((c) => ({
                             type: c.sujet_id ? 'sujet' : c.livre_id ? 'livre' : 'source',
                             page: c.metadata?.page,
                             section: c.metadata?.section
@@ -200,10 +209,10 @@ ${truncatedContent}
         // 5. Format Messages for OpenRouter
         const openRouterMessages = [
             { role: "system", content: systemInstruction },
-            ...messages.map((msg: any) => ({
+            ...((messages as ChatMessage[]).map((msg) => ({
                 role: msg.sender === 'user' ? 'user' : 'assistant',
                 content: msg.text
-            }))
+            })))
         ];
 
         // 6. Call OpenRouter API
@@ -270,7 +279,7 @@ ${truncatedContent}
                                             controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ text: content })}\n\n`));
                                         }
                                     }
-                                } catch (e) { }
+                                } catch { console.warn('Invalid SSE data chunk'); }
                             }
                         }
                     }
@@ -292,9 +301,10 @@ ${truncatedContent}
             },
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Edge Function Error:', error);
-        return new Response(JSON.stringify({ error: error.message }), {
+        const message = error instanceof Error ? error.message : String(error);
+        return new Response(JSON.stringify({ error: message }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });

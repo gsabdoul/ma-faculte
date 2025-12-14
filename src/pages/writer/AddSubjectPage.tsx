@@ -51,9 +51,11 @@ export function AddSubjectPage() {
                 if (modsRes.error) throw modsRes.error;
                 if (unisRes.error) throw unisRes.error;
 
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 setModules(modsRes.data.map((m: any) => ({ id: m.id, name: m.nom })));
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 setUniversities(unisRes.data.map((u: any) => ({ id: u.id, name: u.nom })));
-            } catch (err: any) {
+            } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
                 setError(err.message);
             } finally {
                 setLoading(false);
@@ -105,7 +107,7 @@ export function AddSubjectPage() {
             setSession('Normale');
             setCorrection('');
 
-        } catch (err: any) {
+        } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
             setError(err.message || "Une erreur est survenue lors de l'ajout du sujet.");
         } finally {
             setSubmitting(false);
@@ -139,6 +141,7 @@ export function AddSubjectPage() {
                         <SearchableSelect
                             options={modules.map(m => ({ id: m.id, name: m.name }))}
                             value={selectedModuleName}
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             onChange={(option: any) => {
                                 setSelectedModuleId(option?.id || '');
                                 setSelectedModuleName(option?.name || '');
@@ -154,6 +157,7 @@ export function AddSubjectPage() {
                         <SearchableSelect
                             options={universities.map(u => ({ id: u.id, name: u.name }))}
                             value={selectedUniversityName}
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             onChange={(option: any) => {
                                 setSelectedUniversityId(option?.id || '');
                                 setSelectedUniversityName(option?.name || '');

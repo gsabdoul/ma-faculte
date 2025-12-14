@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../../supabase';
-import { ChevronLeftIcon, ChevronRightIcon, CheckCircleIcon, BookmarkIcon, PencilSquareIcon } from '@heroicons/react/24/solid';
+import { ChevronLeftIcon, ChevronRightIcon, CheckCircleIcon, BookmarkIcon, PencilSquareIcon, FlagIcon, TrashIcon, XCircleIcon, CheckIcon, LightBulbIcon } from '@heroicons/react/24/solid';
 import { AddToPlaylistModal } from '../playlist/AddToPlaylistModal';
 import { Modal } from '../ui/Modal';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
+import { useUser } from '../../context/UserContext';
 import { useDebounce } from '../../hooks/useDebounce';
 
 interface Question {
@@ -24,8 +25,13 @@ interface Option {
     is_correct: boolean;
 }
 
+const isMultipleChoice = (question: Question) => {
+    return question.type === 'qcm' && (question.options?.filter(o => o.is_correct).length ?? 0) > 1;
+};
+
 interface QuizState {
     currentIndex: number;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     answers: Record<number, any>;
     elapsedTime: number;
     submittedQROC: Record<number, boolean>;
@@ -38,22 +44,26 @@ interface QuizPlayerProps {
     onBack: () => void;
     mode?: 'practice' | 'playlist' | 'challenge';
     initialState?: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         answers: Record<number, any>;
         currentIndex: number;
         elapsedTime: number;
         submittedQROC?: Record<number, boolean>;
         qrocSelfEval?: Record<number, boolean>;
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onStateChange?: (state: any) => void;
     onComplete?: (score: number, total: number) => void;
 }
 
 export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice', onComplete, initialState: explicitInitialState, onStateChange }: QuizPlayerProps) {
-    const getLocalStorageKey = () => `quiz-progress-${quizId}`;
+    const getLocalStorageKey = useCallback(() => `quiz-progress-${quizId}`, [quizId]);
     const isOnline = useOnlineStatus();
+    const { user } = useUser();
 
     const [isLoadingState, setIsLoadingState] = useState(true);
     const [currentIndex, setCurrentIndex] = useState(0);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [answers, setAnswers] = useState<Record<number, any>>({});
     const [showResults, setShowResults] = useState(false);
     const [elapsedTime, setElapsedTime] = useState(0);
@@ -64,19 +74,65 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
     const [submittedQROC, setSubmittedQROC] = useState<Record<number, boolean>>({});
     const [qrocSelfEval, setQrocSelfEval] = useState<Record<number, boolean>>({});
     const [showCorrection, setShowCorrection] = useState(false);
+    const [explanationVisibility, setExplanationVisibility] = useState<Record<number, boolean>>({});
 
-    const [userNotes, setUserNotes] = useState<Record<number, string>>({}); // valid question_id -> note content
+    // State for Notes and Reports in Correction View
+    const [userNotes, setUserNotes] = useState<Record<number, { id: string, content: string }>>({});
     const [noteModalOpen, setNoteModalOpen] = useState(false);
     const [currentNoteQuestionId, setCurrentNoteQuestionId] = useState<number | null>(null);
     const [currentNoteContent, setCurrentNoteContent] = useState("");
+    const [isSavingNote, setIsSavingNote] = useState(false);
 
-    const currentState: QuizState = {
+    const [reportModalOpen, setReportModalOpen] = useState(false);
+    const [questionToReport, setQuestionToReport] = useState<Question | null>(null);
+    const [reportDescription, setReportDescription] = useState('');
+    const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+
+    // Refs for accessibility
+    const noteTriggerRef = useRef<HTMLButtonElement | null>(null);
+    const reportTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+    const calculateScore = useCallback(() => {
+        let correctCount = 0;
+        let totalPoints = 0;
+
+        questions.forEach(q => {
+            totalPoints += q.points || 1;
+            const userAnswer = answers[q.id];
+
+            if (q.type === 'qcm' && userAnswer !== undefined && q.options) {
+                const correctOptions = q.options.filter(o => o.is_correct).map(o => o.id);
+                if (isMultipleChoice(q)) {
+                    const userAnswerSet = new Set(userAnswer as number[]);
+                    const correctOptionsSet = new Set(correctOptions);
+                    if (userAnswerSet.size === correctOptionsSet.size && [...userAnswerSet].every(id => correctOptionsSet.has(id))) {
+                        correctCount += (q.points || 1);
+                    }
+                } else {
+                    const correctOption = q.options.find(o => o.is_correct);
+                    if (correctOption && userAnswer === correctOption.id) {
+                        correctCount += (q.points || 1);
+                    }
+                }
+            } else if (q.type === 'qroc' && qrocSelfEval[q.id] === true) {
+                correctCount += (q.points || 1);
+            }
+        });
+
+        return {
+            score: correctCount,
+            total: totalPoints,
+            percentage: totalPoints > 0 ? Math.round((correctCount / totalPoints) * 100) : 0
+        };
+    }, [questions, answers, qrocSelfEval]);
+
+    const currentState: QuizState = useMemo(() => ({
         currentIndex,
         answers,
         elapsedTime,
         submittedQROC,
         qrocSelfEval,
-    };
+    }), [currentIndex, answers, elapsedTime, submittedQROC, qrocSelfEval]);
 
     const debouncedState = useDebounce(currentState, 1000); // Debounce state for 1 second
 
@@ -110,8 +166,10 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
                         .eq('quiz_id', quizId)
                         .single();
                     if (data && typeof data.state === 'string') {
-                        remoteState = { ...data, state: JSON.parse(data.state) };
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        remoteState = { ...data, state: JSON.parse(data.state) } as any;
                     } else {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         remoteState = data as any;
                     }
                 } catch (err) { console.error("Error fetching remote progress:", err); }
@@ -141,7 +199,7 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
         };
 
         loadInitialState();
-    }, [quizId, isOnline, explicitInitialState]);
+    }, [quizId, isOnline, explicitInitialState, getLocalStorageKey]);
 
     // Effect for saving state (debounced)
     useEffect(() => {
@@ -156,9 +214,10 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
                     await supabase.from('quiz_progress').upsert({
                         user_id: user.id,
                         quiz_id: quizId,
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         state: debouncedState as any,
                         updated_at: stateWithTimestamp.updated_at,
-                    }, { onConflict: 'user_id, quiz_id' }); // Assumes you have a unique constraint
+                    }, { onConflict: 'user_id, quiz_id' });
                 }
             }
             // Always save to localStorage for offline access and resilience
@@ -170,7 +229,7 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
         if (onStateChange) {
             onStateChange({ ...debouncedState, isCompleted: showResults });
         }
-    }, [debouncedState, isOnline, quizId, isLoadingState, showResults, onStateChange]);
+    }, [debouncedState, isOnline, quizId, isLoadingState, showResults, onStateChange, getLocalStorageKey]);
 
     // Effect to sync local changes when coming back online
     useEffect(() => {
@@ -189,13 +248,13 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
                     await supabase.from('quiz_progress').upsert({
                         user_id: user.id,
                         quiz_id: quizId,
-                        state: { // This should be an object, Supabase client handles stringification
+                        state: {
                             currentIndex: localState.currentIndex,
                             answers: localState.answers,
                             elapsedTime: localState.elapsedTime,
                             submittedQROC: localState.submittedQROC,
                             qrocSelfEval: localState.qrocSelfEval,
-                        } as any,
+                        } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
                         updated_at: localState.updated_at,
                     }, { onConflict: 'user_id, quiz_id' });
                 } catch (error) {
@@ -204,7 +263,7 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
             };
             syncOfflineProgress();
         }
-    }, [isOnline, quizId]);
+    }, [isOnline, quizId, getLocalStorageKey]);
 
     // Notify state changes (for parent components that need immediate feedback)
     useEffect(() => {
@@ -214,7 +273,7 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
                 isCompleted: showResults
             });
         }
-    }, [currentIndex, answers, elapsedTime, submittedQROC, qrocSelfEval, showResults, onStateChange]);
+    }, [currentIndex, answers, elapsedTime, submittedQROC, qrocSelfEval, showResults, onStateChange, currentState]);
 
     useEffect(() => {
         const fetchSavedQuestions = async () => {
@@ -255,15 +314,15 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
                 const qIds = questions.map(q => q.id);
                 const { data, error } = await supabase
                     .from('user_notes')
-                    .select('question_id, content')
+                    .select('id, question_id, content')
                     .eq('user_id', user.id)
                     .in('question_id', qIds);
 
                 if (error) throw error;
 
-                const notesMap: Record<number, string> = {};
+                const notesMap: Record<number, { id: string, content: string }> = {};
                 data?.forEach(n => {
-                    notesMap[n.question_id] = n.content;
+                    notesMap[n.question_id] = { id: n.id, content: n.content };
                 });
                 setUserNotes(notesMap);
             } catch (err) {
@@ -274,45 +333,102 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
     }, [showCorrection, questions]);
 
 
-    const openNoteModal = (questionId: number) => {
+    const openNoteModal = (questionId: number, trigger: HTMLButtonElement) => {
+        noteTriggerRef.current = trigger;
         setCurrentNoteQuestionId(questionId);
-        setCurrentNoteContent(userNotes[questionId] || "");
+        setCurrentNoteContent(userNotes[questionId]?.content || "");
         setNoteModalOpen(true);
     };
 
+    const closeNoteModal = () => {
+        setNoteModalOpen(false);
+        setCurrentNoteQuestionId(null);
+        setCurrentNoteContent('');
+        noteTriggerRef.current?.focus();
+    };
+
     const handleSaveNote = async () => {
-        if (!currentNoteQuestionId) return;
-
+        if (!currentNoteQuestionId || !user) return;
+        setIsSavingNote(true);
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-
-            if (!currentNoteContent.trim()) {
-                // Delete if empty
-                if (userNotes[currentNoteQuestionId]) {
-                    await supabase.from('user_notes').delete()
-                        .eq('user_id', user.id)
-                        .eq('question_id', currentNoteQuestionId);
-
-                    const newNotes = { ...userNotes };
-                    delete newNotes[currentNoteQuestionId];
-                    setUserNotes(newNotes);
-                }
-            } else {
-                // Upsert
-                await supabase.from('user_notes').upsert({
+            const trimmed = currentNoteContent.trim();
+            const { data, error } = await supabase
+                .from('user_notes')
+                .upsert({
                     user_id: user.id,
                     question_id: currentNoteQuestionId,
-                    content: currentNoteContent,
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'user_id, question_id' }); // Assumes unique constraint
+                    content: trimmed,
+                }, { onConflict: 'user_id, question_id' })
+                .select()
+                .single();
 
-                setUserNotes(prev => ({ ...prev, [currentNoteQuestionId]: currentNoteContent }));
-            }
-            setNoteModalOpen(false);
+            if (error) throw error;
+
+            setUserNotes(prev => ({ ...prev, [currentNoteQuestionId]: { id: data!.id, content: data!.content } }));
+            closeNoteModal();
         } catch (err) {
             console.error("Error saving note", err);
             alert("Erreur lors de l'enregistrement de la note");
+        } finally {
+            setIsSavingNote(false);
+        }
+    };
+
+    const handleDeleteNote = async () => {
+        if (!currentNoteQuestionId || !userNotes[currentNoteQuestionId]) return;
+        if (!window.confirm("Voulez-vous vraiment supprimer cette note ?")) return;
+
+        try {
+            const { error } = await supabase.from('user_notes').delete().eq('id', userNotes[currentNoteQuestionId].id);
+            if (error) throw error;
+
+            setUserNotes(prev => {
+                const newNotes = { ...prev };
+                delete newNotes[currentNoteQuestionId];
+                return newNotes;
+            });
+            closeNoteModal();
+        } catch {
+            alert("Erreur lors de la suppression de la note.");
+        }
+    };
+
+    const openReportModal = (question: Question, trigger: HTMLButtonElement) => {
+        reportTriggerRef.current = trigger;
+        setQuestionToReport(question);
+        setReportModalOpen(true);
+    };
+
+    const closeReportModal = () => {
+        setReportModalOpen(false);
+        setQuestionToReport(null);
+        setReportDescription('');
+        reportTriggerRef.current?.focus();
+    };
+
+    const handleReportSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!questionToReport || !user || !reportDescription.trim()) return;
+
+        setIsSubmittingReport(true);
+        try {
+            const { error: insertError } = await supabase
+                .from('signalements')
+                .insert({
+                    user_id: user.id,
+                    item_id: quizId,
+                    type: 'sujet_correction', // Using 'sujet_correction' as we are reporting context of a subject/quiz
+                    description: `[Question #${questionToReport.id}] ${reportDescription.trim()}`,
+                });
+
+            if (insertError) throw insertError;
+
+            alert('Votre signalement a été envoyé avec succès. Merci !');
+            closeReportModal();
+        } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+            alert(`Erreur lors de l'envoi du signalement : ${err.message}`);
+        } finally {
+            setIsSubmittingReport(false);
         }
     };
 
@@ -335,14 +451,13 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
             const { score, total } = calculateScore();
             onComplete(score, total);
         }
-    }, [showResults, showCorrection, onComplete]);
+    }, [showResults, showCorrection, onComplete, calculateScore]);
 
     const currentQuestion = questions[currentIndex];
 
-    const isMultipleChoice = (question: Question) => {
-        return question.type === 'qcm' && (question.options?.filter(o => o.is_correct).length ?? 0) > 1;
-    };
+    // isMultipleChoice moved outside
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleAnswerChange = (questionId: number, answer: any) => {
         const question = questions.find(q => q.id === questionId);
         if (question && isMultipleChoice(question)) {
@@ -385,39 +500,7 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
         onBack();
     };
 
-    const calculateScore = () => {
-        let correctCount = 0;
-        let totalPoints = 0;
-
-        questions.forEach(q => {
-            totalPoints += q.points || 1;
-            const userAnswer = answers[q.id];
-
-            if (q.type === 'qcm' && userAnswer !== undefined && q.options) {
-                const correctOptions = q.options.filter(o => o.is_correct).map(o => o.id);
-                if (isMultipleChoice(q)) {
-                    const userAnswerSet = new Set(userAnswer as number[]);
-                    const correctOptionsSet = new Set(correctOptions);
-                    if (userAnswerSet.size === correctOptionsSet.size && [...userAnswerSet].every(id => correctOptionsSet.has(id))) {
-                        correctCount += (q.points || 1);
-                    }
-                } else {
-                    const correctOption = q.options.find(o => o.is_correct);
-                    if (correctOption && userAnswer === correctOption.id) {
-                        correctCount += (q.points || 1);
-                    }
-                }
-            } else if (q.type === 'qroc' && qrocSelfEval[q.id] === true) {
-                correctCount += (q.points || 1);
-            }
-        });
-
-        return {
-            score: correctCount,
-            total: totalPoints,
-            percentage: totalPoints > 0 ? Math.round((correctCount / totalPoints) * 100) : 0
-        };
-    };
+    // calculateScore moved up
 
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
@@ -583,26 +666,33 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
                                                 ? Array.isArray(answers[question.id]) && answers[question.id].includes(option.id)
                                                 : userAnswer === option.id;
 
-                                            const isCorrectOption = option.is_correct === true;
+                                            const isCorrectOption = option.is_correct;
+
+                                            let optionClass = 'bg-gray-50 border-gray-200'; // Non choisi, incorrect (défaut)
+                                            if (isCorrectOption && isUserAnswer) {
+                                                optionClass = 'bg-green-50 border-green-500'; // Trouvé: choisi et correct
+                                            } else if (isCorrectOption && !isUserAnswer) {
+                                                optionClass = 'bg-yellow-50 border-yellow-500'; // Manqué: non choisi mais correct
+                                            } else if (!isCorrectOption && isUserAnswer) {
+                                                optionClass = 'bg-red-50 border-red-500'; // Erreur: choisi mais incorrect
+                                            }
 
                                             return (
                                                 <div
                                                     key={option.id}
-                                                    className={`p-3 rounded-lg border-2 ${isCorrectOption
-                                                        ? 'bg-green-50 border-green-500'
-                                                        : isUserAnswer
-                                                            ? 'bg-red-50 border-red-500'
-                                                            : 'bg-gray-50 border-gray-200'
-                                                        }`}
+                                                    className={`p-3 rounded-lg border-2 ${optionClass}`}
                                                 >
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-gray-800">{option.content}</span>
                                                         <div className="flex items-center gap-2">
-                                                            {isUserAnswer && !isCorrectOption && (
-                                                                <span className="text-red-600 text-sm font-medium">Votre réponse</span>
+                                                            {isUserAnswer && !isCorrectOption && ( // Erreur
+                                                                <span className="text-red-600 text-sm font-medium flex items-center gap-1"><XCircleIcon className="w-4 h-4" /> Votre réponse</span>
                                                             )}
-                                                            {isCorrectOption && (
-                                                                <span className="text-green-600 text-sm font-bold">✓ Bonne réponse</span>
+                                                            {isCorrectOption && isUserAnswer && ( // Trouvé
+                                                                <span className="text-green-600 text-sm font-bold flex items-center gap-1"><CheckCircleIcon className="w-4 h-4" /> Trouvé</span>
+                                                            )}
+                                                            {isCorrectOption && !isUserAnswer && ( // Manqué
+                                                                <span className="text-yellow-700 text-sm font-bold flex items-center gap-1"><CheckIcon className="w-4 h-4" /> Bonne réponse</span>
                                                             )}
                                                         </div>
                                                     </div>
@@ -627,27 +717,38 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
                                     </div>
                                 )}
 
-                                {question.explanation && (
+                                {explanationVisibility[question.id] && question.explanation && (
                                     <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
                                         <p className="text-sm font-medium text-yellow-800 mb-1">💡 Explication :</p>
                                         <p className="text-gray-700 text-sm">{question.explanation}</p>
                                     </div>
                                 )}
 
-                                {/* Note Button */}
-                                <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
+                                <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end items-center gap-1">
+                                    {question.explanation && (
+                                        <button onClick={() => setExplanationVisibility(prev => ({ ...prev, [question.id]: !prev[question.id] }))} className={`p-2 rounded-full transition-colors ${explanationVisibility[question.id] ? 'text-yellow-600 bg-yellow-100' : 'text-gray-400 hover:bg-gray-200'}`} title="Afficher/Masquer l'explication">
+                                            <LightBulbIcon className="w-5 h-5" />
+                                        </button>
+                                    )}
                                     <button
-                                        onClick={() => openNoteModal(question.id)}
-                                        className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-blue-600 transition-colors"
+                                        onClick={(e) => openNoteModal(question.id, e.currentTarget)}
+                                        className={`p-2 rounded-full transition-colors ${userNotes[question.id] ? 'text-blue-600 bg-blue-100' : 'text-gray-400 hover:bg-gray-200'}`}
+                                        title="Ajouter/Modifier une note"
                                     >
                                         <PencilSquareIcon className="w-5 h-5" />
-                                        {userNotes[question.id] ? "Modifier ma note" : "Ajouter une note"}
+                                    </button>
+                                    <button
+                                        onClick={(e) => openReportModal(question, e.currentTarget)}
+                                        className="p-2 rounded-full text-gray-400 hover:bg-red-100 hover:text-red-600 transition-colors"
+                                        title="Signaler une erreur sur cette question"
+                                    >
+                                        <FlagIcon className="w-5 h-5" />
                                     </button>
                                 </div>
-                                {userNotes[question.id] && (
+                                {userNotes[question.id]?.content && (
                                     <div className="mt-2 bg-yellow-50 p-3 rounded-lg border border-yellow-200">
                                         <p className="text-xs font-bold text-yellow-800 mb-1">Ma Note :</p>
-                                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{userNotes[question.id]}</p>
+                                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{userNotes[question.id].content}</p>
                                     </div>
                                 )}
                             </div>
@@ -662,30 +763,67 @@ export default function QuizPlayer({ questions, quizId, onBack, mode = 'practice
                     </button>
                 </main>
 
-                <Modal isOpen={noteModalOpen} onClose={() => setNoteModalOpen(false)} title="Mes Notes">
+                <Modal isOpen={noteModalOpen} onClose={closeNoteModal} title="Note sur la question">
                     <div className="space-y-4">
-                        <p className="text-sm text-gray-500">Ajoutez une note personnelle pour cette question (astuce, rappel, etc.).</p>
+                        <p className="bg-gray-100 p-3 rounded-md text-sm font-medium text-gray-600">
+                            {questions.find(q => q.id === currentNoteQuestionId)?.content}
+                        </p>
                         <textarea
                             value={currentNoteContent}
                             onChange={(e) => setCurrentNoteContent(e.target.value)}
-                            className="w-full h-32 border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                            placeholder="Écrivez votre note ici..."
-                        />
-                        <div className="flex justify-end gap-3">
+                            className="w-full h-40 p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Écrivez vos notes personnelles ici..."
+                            autoFocus
+                        ></textarea>
+                        <div className="mt-6 flex justify-between items-center">
+                            <div>
+                                {userNotes[currentNoteQuestionId!] && (
+                                    <button type="button" onClick={handleDeleteNote} className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center gap-1">
+                                        <TrashIcon className="w-4 h-4" />
+                                        Supprimer
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex justify-end space-x-3">
+                                <button type="button" onClick={closeNoteModal} className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                    Annuler
+                                </button>
+                                <button type="button" onClick={handleSaveNote} disabled={isSavingNote} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300">
+                                    {isSavingNote ? 'Sauvegarde...' : 'Sauvegarder'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </Modal>
+
+                <Modal isOpen={reportModalOpen} onClose={closeReportModal} title="Signaler une erreur">
+                    <form onSubmit={handleReportSubmit}>
+                        <p className="bg-gray-100 p-3 rounded-md text-sm font-medium text-gray-600 mb-4">
+                            {questionToReport?.content}
+                        </p>
+                        <p className="text-sm text-gray-600 mb-3">
+                            Aidez-nous à améliorer la qualité des questions. Décrivez l'erreur que vous avez trouvée.
+                        </p>
+                        <textarea
+                            value={reportDescription}
+                            onChange={(e) => setReportDescription(e.target.value)}
+                            className="w-full h-32 p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Votre description de l'erreur..."
+                            required
+                        ></textarea>
+                        <div className="mt-6 flex justify-end space-x-3">
                             <button
-                                onClick={() => setNoteModalOpen(false)}
-                                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                                type="button"
+                                onClick={closeReportModal}
+                                className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50"
                             >
                                 Annuler
                             </button>
-                            <button
-                                onClick={handleSaveNote}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                            >
-                                Enregistrer
+                            <button type="submit" disabled={isSubmittingReport} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300">
+                                {isSubmittingReport ? 'Envoi...' : 'Envoyer le signalement'}
                             </button>
                         </div>
-                    </div>
+                    </form>
                 </Modal>
             </div>
         );

@@ -148,7 +148,7 @@ export function WriterDashboard() {
                     // Mettre à jour l'état local pour refléter la suppression
                     setAllCreations(prev => prev.filter(c => c.id !== item.id));
 
-                } catch (err: any) {
+                } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
                     setModalState({
                         isOpen: true,
                         title: "Erreur de suppression",

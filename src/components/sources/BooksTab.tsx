@@ -232,8 +232,8 @@ export function BooksTab() {
                                     <DownloadButton url={fileUrl} title={book.titre} />
                                     <button
                                         onClick={(e) => openReportModal(e, book)}
-                                        className="absolute top-2 right-2 p-1.5 bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                        title="Signaler un problème"
+                                        className="absolute top-2 right-2 p-1.5 bg-red-500/70 hover:bg-red-600 text-white rounded-full transition-all"
+                                        title="Signaler un problème sur ce livre"
                                     >
                                         <FlagIcon className="w-4 h-4" />
                                     </button>

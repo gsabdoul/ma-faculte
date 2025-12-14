@@ -163,6 +163,7 @@ export function SubjectDetailsPage() {
             if (error) {
                 console.error('Error fetching subject details:', error);
             } else {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const moduleName = Array.isArray(data.modules) ? data.modules[0]?.nom : (data.modules as any)?.nom;
                 const title = `Sujet de ${moduleName} - ${data.annee || ''} (${data.session || 'Normale'})`;
                 setSubjectDetails({
@@ -358,6 +359,7 @@ export function SubjectDetailsPage() {
         }
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleDragEnd = (event: any) => {
         const { active, over } = event;
 

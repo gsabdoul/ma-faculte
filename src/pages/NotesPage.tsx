@@ -12,6 +12,11 @@ interface Note {
         id: number;
         content: string;
         type: string;
+        options: {
+            id: number;
+            content: string;
+            is_correct: boolean;
+        }[];
     };
 }
 
@@ -40,7 +45,12 @@ export function NotesPage() {
                     questions!inner (
                         id,
                         content,
-                        type
+                        type,
+                        options (
+                            id,
+                            content,
+                            is_correct
+                        )
                     )
                 `)
                 .eq('user_id', user?.id)
@@ -49,7 +59,8 @@ export function NotesPage() {
             if (error) throw error;
 
             // Transform the data to match our Note interface
-            const transformedData = data?.map(item => ({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const transformedData = data?.map((item: any) => ({
                 id: item.id,
                 content: item.content,
                 created_at: item.created_at,
@@ -127,13 +138,36 @@ export function NotesPage() {
                     notes.map(note => (
                         <div key={note.id} className="bg-white rounded-xl shadow-sm p-6">
                             <div className="mb-4 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium mb-2 ${note.question.type === 'qcm' ? 'bg-blue-100 text-blue-700' :
-                                    note.question.type === 'qroc' ? 'bg-purple-100 text-purple-700' :
-                                        'bg-orange-100 text-orange-700'
-                                    }`}>
-                                    {note.question.type.toUpperCase()}
-                                </span>
-                                <p className="text-gray-800 text-sm font-medium line-clamp-2">{note.question.content}</p>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${note.question.type === 'qcm' ? 'bg-blue-100 text-blue-700' :
+                                        note.question.type === 'qroc' ? 'bg-purple-100 text-purple-700' :
+                                            'bg-orange-100 text-orange-700'
+                                        }`}>
+                                        {note.question.type.toUpperCase()}
+                                    </span>
+                                </div>
+                                <p className="text-gray-800 text-sm font-medium line-clamp-2 md:line-clamp-none mb-3">{note.question.content}</p>
+
+                                {note.question.options && note.question.options.length > 0 && (
+                                    <div className="space-y-2 pl-2 border-l-2 border-gray-200">
+                                        {note.question.options.map(option => (
+                                            <div
+                                                key={option.id}
+                                                className={`text-sm p-2 rounded ${option.is_correct
+                                                        ? 'bg-green-50 text-green-800 border border-green-200'
+                                                        : 'text-gray-600'
+                                                    }`}
+                                            >
+                                                <div className="flex items-start gap-2">
+                                                    {option.is_correct && (
+                                                        <span className="text-green-600 mt-0.5">✓</span>
+                                                    )}
+                                                    <span>{option.content}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             {editingNote === note.id ? (

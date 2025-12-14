@@ -19,6 +19,7 @@ type ModuleId = string;
 
 // Helper function to transform Supabase subject data into SubjectInfo
 const sujetToSubjectInfo = (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     s: any,
     mods: Module[],
     unis: University[]
@@ -80,7 +81,9 @@ export function ManageSubjectsPage() {
                 if (unisRes.error) throw unisRes.error;
                 if (sujetsRes.error) throw sujetsRes.error;
 
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const mods: Module[] = (modsRes.data || []).map((m: any) => ({ id: m.id, name: m.nom }));
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const unis: University[] = (unisRes.data || []).map((u: any) => ({ id: u.id, name: u.nom }));
 
                 const sujets = (sujetsRes.data || []).map(s =>
@@ -151,7 +154,7 @@ export function ManageSubjectsPage() {
             const delRes = await supabase.from('sujets').delete().eq('id', subjectToDelete.id);
             if (delRes.error) throw delRes.error;
             setAllSubjects(prev => prev.filter(s => s.id !== subjectToDelete.id));
-        } catch (err: any) {
+        } catch {
             // Optionally surface deletion errors in future UI
         } finally {
             setSubjectToDelete(null);
@@ -261,6 +264,7 @@ export function ManageSubjectsPage() {
                                 <SearchableSelect
                                     options={modules}
                                     value={formActiveSubject.moduleName}
+                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                     onChange={(option: any) => {
                                         setFormActiveSubject(prev => ({ ...prev, moduleId: option?.id || '', moduleName: option?.name || '' }));
                                     }}
@@ -275,6 +279,7 @@ export function ManageSubjectsPage() {
                                 <SearchableSelect
                                     options={universities}
                                     value={formActiveSubject.universityName}
+                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                     onChange={(option: any) => {
                                         setFormActiveSubject(prev => ({ ...prev, universityId: option?.id || '', universityName: option?.name || '' }));
                                     }}

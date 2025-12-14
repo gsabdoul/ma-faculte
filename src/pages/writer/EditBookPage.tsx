@@ -53,9 +53,9 @@ export function EditBookPage() {
                 setSelectedModuleName(book.modules?.nom || '');
                 setFileUrl(book.fichier_url || '');
 
-                setModules(modsRes.data.map((m: any) => ({ id: m.id, name: m.nom })));
-            } catch (err: any) {
-                setError(err.message);
+                setModules((modsRes.data || []).map((m: { id: string; nom: string }) => ({ id: m.id, name: m.nom })));
+            } catch (err) {
+                setError(err instanceof Error ? err.message : String(err));
             } finally {
                 setLoading(false);
             }
@@ -69,7 +69,7 @@ export function EditBookPage() {
         setError(null);
 
         try {
-            const bookUpdate: any = {
+            const bookUpdate: Record<string, unknown> = {
                 titre: title,
                 module_id: selectedModuleId,
                 fichier_url: fileUrl
@@ -82,7 +82,7 @@ export function EditBookPage() {
                 bookUpdate.couverture_url = supabase.storage.from('livres').getPublicUrl(filePath).data.publicUrl;
             }
 
-            const { error: updateError } = await supabase.from('livres').update(bookUpdate).eq('id', bookId);
+            const { error: updateError } = await supabase.from('livres').update(bookUpdate).eq('id', bookId!);
             if (updateError) throw updateError;
 
             setModalState({
@@ -92,8 +92,8 @@ export function EditBookPage() {
                 onConfirm: () => navigate('/writer/dashboard')
             });
 
-        } catch (err: any) {
-            setError(err.message || "Une erreur est survenue.");
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Une erreur est survenue.");
         } finally {
             setSubmitting(false);
         }
@@ -122,9 +122,9 @@ export function EditBookPage() {
                         <SearchableSelect
                             options={modules}
                             value={selectedModuleName}
-                            onChange={(option: any) => {
-                                setSelectedModuleId(option?.id || '');
-                                setSelectedModuleName(option?.name || '');
+                            onChange={(option: { id: string; name: string } | null) => {
+                                setSelectedModuleId(option?.id ?? '');
+                                setSelectedModuleName(option?.name ?? '');
                             }}
                         />
                     </div>

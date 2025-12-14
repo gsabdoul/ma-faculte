@@ -68,11 +68,11 @@ export function EditSubjectPage() {
                 setSession(subject.session || 'Normale');
                 setCorrection(subject.correction || '');
 
-                setModules(modsRes.data.map((m: any) => ({ id: m.id, name: m.nom })));
-                setUniversities(unisRes.data.map((u: any) => ({ id: u.id, name: u.nom })));
+                setModules((modsRes.data || []).map((m: { id: string; nom: string }) => ({ id: m.id, name: m.nom })));
+                setUniversities((unisRes.data || []).map((u: { id: string; nom: string }) => ({ id: u.id, name: u.nom })));
 
-            } catch (err: any) {
-                setError(err.message);
+            } catch (err) {
+                setError(err instanceof Error ? err.message : String(err));
             } finally {
                 setLoading(false);
             }
@@ -91,7 +91,7 @@ export function EditSubjectPage() {
         setError(null);
 
         try {
-            const subjectUpdate: any = {
+            const subjectUpdate: Record<string, unknown> = {
                 module_id: selectedModuleId,
                 universite_id: selectedUniversityId,
                 annee: year ? Number(year) : null,
@@ -99,7 +99,7 @@ export function EditSubjectPage() {
                 correction: correction || null,
             };
 
-            const { error: updateError } = await supabase.from('sujets').update(subjectUpdate).eq('id', subjectId);
+            const { error: updateError } = await supabase.from('sujets').update(subjectUpdate).eq('id', subjectId!);
 
             if (updateError) throw updateError;
 
@@ -110,8 +110,8 @@ export function EditSubjectPage() {
                 onConfirm: () => navigate('/writer/dashboard')
             });
 
-        } catch (err: any) {
-            setError(err.message || "Une erreur est survenue lors de la mise à jour.");
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Une erreur est survenue lors de la mise à jour.");
         } finally {
             setSubmitting(false);
         }
@@ -140,9 +140,9 @@ export function EditSubjectPage() {
                         <SearchableSelect
                             options={modules}
                             value={selectedModuleName}
-                            onChange={(option: any) => {
-                                setSelectedModuleId(option?.id || '');
-                                setSelectedModuleName(option?.name || '');
+                            onChange={(option: { id: string; name: string } | null) => {
+                                setSelectedModuleId(option?.id ?? '');
+                                setSelectedModuleName(option?.name ?? '');
                             }}
                             placeholder="Sélectionner un module..."
                         />
@@ -155,9 +155,9 @@ export function EditSubjectPage() {
                         <SearchableSelect
                             options={universities}
                             value={selectedUniversityName}
-                            onChange={(option: any) => {
-                                setSelectedUniversityId(option?.id || '');
-                                setSelectedUniversityName(option?.name || '');
+                            onChange={(option: { id: string; name: string } | null) => {
+                                setSelectedUniversityId(option?.id ?? '');
+                                setSelectedUniversityName(option?.name ?? '');
                             }}
                             placeholder="Sélectionner une université..."
                         />

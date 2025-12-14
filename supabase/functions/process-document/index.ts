@@ -1,5 +1,4 @@
-// @ts-ignore
-declare const Deno: any;
+declare const Deno: { env: { get: (name: string) => string | undefined } };
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -19,7 +18,7 @@ serve(async (req: Request) => {
     }
 
     try {
-        const { document_url, sujet_id, source_id, livre_id, content, type } = await req.json()
+        const { document_url, sujet_id, source_id, livre_id, content } = await req.json()
 
         if ((!document_url && !content) || (!sujet_id && !source_id && !livre_id)) {
             throw new Error('Missing required fields: (document_url OR content) AND (sujet_id OR source_id OR livre_id)')
@@ -28,7 +27,8 @@ serve(async (req: Request) => {
         console.log(`Processing document for ${sujet_id ? `sujet_id: ${sujet_id}` : source_id ? `source_id: ${source_id}` : `livre_id: ${livre_id}`}`)
 
 
-        let chunks = []
+        type DocChunk = { content: string; metadata?: Record<string, unknown> };
+        let chunks: DocChunk[] = []
         let title = ''
 
         // 1. Get Content (Download or Direct)
@@ -46,7 +46,7 @@ serve(async (req: Request) => {
 
             if (contentType?.includes('application/json') || document_url.endsWith('.json')) {
                 console.log('Processing JSON document')
-                const json = await docResponse.json()
+                const json = await docResponse.json() as { title?: string; content?: string; chunks?: DocChunk[] }
 
                 // Expecting { title: string, content: string } or { title: string, chunks: { content: string }[] }
                 title = json.title || 'Untitled'
@@ -101,9 +101,9 @@ serve(async (req: Request) => {
                     throw new Error(`Docling service error: ${errorText}`)
                 }
 
-                const result = await doclingResponse.json()
+                const result = await doclingResponse.json() as { chunks: DocChunk[]; title?: string }
                 chunks = result.chunks
-                title = result.title
+                title = result.title || ''
                 console.log(`Received ${chunks.length} chunks from Docling`)
             }
         }
@@ -175,10 +175,11 @@ serve(async (req: Request) => {
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error processing document:', error)
+        const message = error instanceof Error ? error.message : String(error)
         return new Response(
-            JSON.stringify({ error: error.message }),
+            JSON.stringify({ error: message }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
         )
     }

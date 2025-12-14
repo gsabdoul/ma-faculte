@@ -1,14 +1,14 @@
-import React from 'react';
+import type { ElementType, FC } from 'react';
 
 interface QuizActionCardProps {
     title: string;
-    icon: React.ElementType;
+    icon: ElementType;
     onClick: () => void;
     color: string;
     delay?: number;
 }
 
-export const QuizActionCard: React.FC<QuizActionCardProps> = ({ title, icon: Icon, onClick, color, delay = 0 }) => {
+export const QuizActionCard: FC<QuizActionCardProps> = ({ title, icon: Icon, onClick, color, delay = 0 }) => {
     // Extract base color name for efficient shadow usage (assuming format like 'bg-blue-500' or similar if needed, 
     // but here we expect 'from-blue-500 to-blue-600' style for gradients. 
     // For simplicity, we'll keep 'color' as the full class string for the gradient background.

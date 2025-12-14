@@ -24,7 +24,7 @@ export function ForgotPasswordPage() {
             } else {
                 setSuccessMessage('Un email de réinitialisation a été envoyé à votre adresse email.');
             }
-        } catch (err) {
+        } catch {
             setError('Une erreur est survenue lors de la demande de réinitialisation.');
         } finally {
             setLoading(false);

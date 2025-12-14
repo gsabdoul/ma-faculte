@@ -91,7 +91,7 @@ export function ManageUsersPage() {
     }, [searchTerm, allUsers]);
 
     const sortedUsers = useMemo(() => {
-        let sortableUsers = [...filteredUsers];
+        const sortableUsers = [...filteredUsers];
         if (sortConfig !== null) {
             const { key, direction } = sortConfig;
             sortableUsers.sort((a, b) => {

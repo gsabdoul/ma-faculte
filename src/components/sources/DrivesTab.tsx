@@ -149,8 +149,8 @@ export function DrivesTab() {
                             </a>
                             <button
                                 onClick={() => openReportModal(drive)}
-                                className="ml-4 p-2 rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-                                title="Signaler un lien mort"
+                                className="ml-4 p-2 rounded-full text-white bg-red-500/70 hover:bg-red-600 transition-all"
+                                title="Signaler un problème"
                             >
                                 <FlagIcon className="w-5 h-5" />
                             </button>
