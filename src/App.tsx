@@ -20,6 +20,36 @@ export default function App() {
     (window as any).updateSW = updateSW;
   }, [updateSW]);
 
+  useEffect(() => {
+    // Gestion du bouton retour Android
+    import('@capacitor/app').then(({ App: CapacitorApp }) => {
+      CapacitorApp.addListener('backButton', () => {
+        // Si on est sur une modale, on pourrait vouloir la fermer (logique à ajouter si besoin)
+
+        // Vérifier l'URL actuelle (hash router)
+        const currentHash = window.location.hash;
+        console.log('Back button pressed. Current hash:', currentHash);
+
+        // Liste des routes principales où le retour doit mener à l'accueil
+        // Stats, Chat, Drives, Livres, Profil, etc.
+        // Si on n'est PAS sur /home (et pas sur welcome/login qui sont gérés autrement)
+        // On retourne à l'accueil
+        if (!currentHash.includes('#/home') && !currentHash.includes('#/welcome') && !currentHash.includes('#/login')) {
+          window.location.hash = '/home';
+        } else {
+          // Si on est sur l'accueil, on quitte l'app
+          CapacitorApp.exitApp();
+        }
+      });
+    });
+
+    return () => {
+      import('@capacitor/app').then(({ App: CapacitorApp }) => {
+        CapacitorApp.removeAllListeners();
+      });
+    };
+  }, []);
+
   const closePrompt = () => setNeedsRefresh(false);
   const doRefresh = () => {
     // Demande au SW d'activer la nouvelle version, puis recharge

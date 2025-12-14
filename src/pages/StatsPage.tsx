@@ -36,7 +36,7 @@ const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }: StatCard
                 </div>
                 {trend && (
                     <span className={`text-xs font-bold px-2 py-1 rounded-full ${trend > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}%
+                        {trend > 0 ? '↑' : '↓'} {Number(Math.abs(trend)).toFixed(2)}%
                     </span>
                 )}
             </div>
@@ -206,7 +206,7 @@ const ModulePerformanceBar = ({ module, score, quizCount }: ModulePerformanceBar
                     <p className="text-xs text-gray-500">{quizCount} quiz complétés</p>
                 </div>
                 <div className="text-right">
-                    <p className="text-lg font-bold text-blue-600">{score}%</p>
+                    <p className="text-lg font-bold text-blue-600">{Number(score).toFixed(2)}%</p>
                 </div>
             </div>
 
@@ -329,7 +329,7 @@ export function StatsPage() {
                                 // Calculate coverage percentage
                                 // Cap at 100% if they re-did questions
                                 const progress = totalQuestionsInDb > 0
-                                    ? Math.min(Math.round((questionsDone / totalQuestionsInDb) * 100), 100)
+                                    ? Math.min((questionsDone / totalQuestionsInDb) * 100, 100)
                                     : 0;
 
                                 return {
@@ -361,7 +361,7 @@ export function StatsPage() {
 
     return (
         <div className="min-h-screen bg-gray-50 pb-20">
-            <header className="bg-gradient-to-br from-blue-600 to-purple-600 text-white p-6 pb-8 rounded-b-3xl shadow-lg">
+            <header className="sticky top-0 z-40 bg-gradient-to-br from-blue-600 to-purple-600 text-white p-6 pb-8 rounded-b-3xl shadow-lg">
                 <h1 className="text-2xl font-bold">📊 Mes Performances</h1>
                 <p className="text-blue-100 text-sm mt-1">Suivez votre progression et vos résultats</p>
             </header>
@@ -378,7 +378,7 @@ export function StatsPage() {
                     />
                     <StatCard
                         title="Score Moyen"
-                        value={`${stats?.average_score || 0}%`}
+                        value={`${Number(stats?.average_score || 0).toFixed(2)}%`}
                         icon={ChartBarIcon}
                         color="bg-green-500"
                         trend={5}
